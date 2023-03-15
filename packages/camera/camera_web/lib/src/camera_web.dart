@@ -201,7 +201,8 @@ class CameraPlugin extends CameraPlatform {
   @override
   Future<int> createCamera(
     CameraDescription cameraDescription,
-    ResolutionPreset? resolutionPreset, {
+    ResolutionPreset? resolutionPreset,
+    ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
   }) =>
       createCameraWithSettings(
