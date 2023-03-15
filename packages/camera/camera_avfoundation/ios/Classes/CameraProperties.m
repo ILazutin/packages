@@ -173,6 +173,24 @@ FLTResolutionPreset FLTGetFLTResolutionPresetForString(NSString *preset) {
   }
 }
 
+#pragma mark - resolution aspect ratio
+
+FLTResolutionAspectRatio FLTGetFLTResolutionAspectRatioForString(NSString *aspectRatio) {
+  if ([aspectRatio isEqualToString:@"ratio_16_9"]) {
+    return FLTResolutionAspectRatio16_9;
+  } else if ([aspectRatio isEqualToString:@"ratio_4_3"]) {
+    return FLTResolutionAspectRatio4_3;
+  } else {
+    NSError *error = [NSError errorWithDomain:NSCocoaErrorDomain
+                                         code:NSURLErrorUnknown
+                                     userInfo:@{
+                                       NSLocalizedDescriptionKey : [NSString
+                                           stringWithFormat:@"Unknown resolution aspect ratio %@", aspectRatio]
+                                     }];
+    @throw error;
+  }
+}
+
 #pragma mark - video format
 
 OSType FLTGetVideoFormatFromString(NSString *videoFormatString) {

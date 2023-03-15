@@ -108,6 +108,22 @@ typedef NS_ENUM(NSInteger, FLTResolutionPreset) {
  */
 extern FLTResolutionPreset FLTGetFLTResolutionPresetForString(NSString *preset);
 
+#pragma mark - resolution aspect ratio
+
+/**
+ * Represents camera's resolution aspect ratio. Mirrors ResolutionAspectRatio in camera.dart.
+ */
+typedef NS_ENUM(NSInteger, FLTResolutionAspectRatio) {
+  FLTResolutionAspectRatio16_9,
+  FLTResolutionAspectRatio4_3,
+};
+
+/**
+ * Gets FLTResolutionAspectRatio from its string representation.
+ * @param aspectRatio a string representation of FLTResolutionAspectRatio.
+ */
+extern FLTResolutionAspectRatio FLTGetFLTResolutionAspectRatioForString(NSString *aspectRatio);
+
 #pragma mark - video format
 
 /**

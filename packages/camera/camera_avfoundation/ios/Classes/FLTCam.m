@@ -94,12 +94,14 @@ NSString *const errorMethod = @"error";
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
+             resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue
                              error:(NSError **)error {
   return [self initWithCameraName:cameraName
                  resolutionPreset:resolutionPreset
+            resolutionAspectRatio:resolutionAspectRatio
                       enableAudio:enableAudio
                       orientation:orientation
               videoCaptureSession:[[AVCaptureSession alloc] init]
@@ -110,6 +112,7 @@ NSString *const errorMethod = @"error";
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
+             resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                        orientation:(UIDeviceOrientation)orientation
                videoCaptureSession:(AVCaptureSession *)videoCaptureSession
@@ -120,6 +123,11 @@ NSString *const errorMethod = @"error";
   NSAssert(self, @"super init cannot be nil");
   @try {
     _resolutionPreset = FLTGetFLTResolutionPresetForString(resolutionPreset);
+  } @catch (NSError *e) {
+    *error = e;
+  }
+  @try {
+    _resolutionAspectRatio = FLTGetFLTResolutionAspectRatioForString(resolutionAspectRatio);
   } @catch (NSError *e) {
     *error = e;
   }
@@ -162,7 +170,8 @@ NSString *const errorMethod = @"error";
   _motionManager = [[CMMotionManager alloc] init];
   [_motionManager startAccelerometerUpdates];
 
-  [self setCaptureSessionPreset:_resolutionPreset];
+  [self setCaptureSessionPreset:_resolutionPreset
+          resolutionAspectRatio:_resolutionAspectRatio];
   [self updateOrientation];
 
   return self;
@@ -337,60 +346,67 @@ NSString *const errorMethod = @"error";
   return file;
 }
 
-- (void)setCaptureSessionPreset:(FLTResolutionPreset)resolutionPreset {
-  switch (resolutionPreset) {
-    case FLTResolutionPresetMax:
-    case FLTResolutionPresetUltraHigh:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
-        _previewSize = CGSizeMake(3840, 2160);
-        break;
-      }
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPresetHigh;
-        _previewSize =
-            CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
-                       _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
-        break;
-      }
-    case FLTResolutionPresetVeryHigh:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1920x1080;
-        _previewSize = CGSizeMake(1920, 1080);
-        break;
-      }
-    case FLTResolutionPresetHigh:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1280x720;
-        _previewSize = CGSizeMake(1280, 720);
-        break;
-      }
-    case FLTResolutionPresetMedium:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPreset640x480;
-        _previewSize = CGSizeMake(640, 480);
-        break;
-      }
-    case FLTResolutionPresetLow:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset352x288]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPreset352x288;
-        _previewSize = CGSizeMake(352, 288);
-        break;
-      }
-    default:
-      if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetLow]) {
-        _videoCaptureSession.sessionPreset = AVCaptureSessionPresetLow;
-        _previewSize = CGSizeMake(352, 288);
-      } else {
-        NSError *error =
-            [NSError errorWithDomain:NSCocoaErrorDomain
-                                code:NSURLErrorUnknown
-                            userInfo:@{
-                              NSLocalizedDescriptionKey :
-                                  @"No capture session available for current capture session."
-                            }];
-        @throw error;
-      }
+- (void)setCaptureSessionPreset:(FLTResolutionPreset)resolutionPreset
+          resolutionAspectRatio:(FLTResolutionAspectRatio)resolutionAspectRatio {
+  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
+    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+    _previewSize = CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
+                        _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
+  } else {
+    switch (resolutionPreset) {
+      case FLTResolutionPresetMax:
+      case FLTResolutionPresetUltraHigh:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
+          _previewSize = CGSizeMake(3840, 2160);
+          break;
+        }
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPresetHigh;
+          _previewSize =
+              CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
+                        _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
+          break;
+        }
+      case FLTResolutionPresetVeryHigh:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1920x1080;
+          _previewSize = CGSizeMake(1920, 1080);
+          break;
+        }
+      case FLTResolutionPresetHigh:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1280x720;
+          _previewSize = CGSizeMake(1280, 720);
+          break;
+        }
+      case FLTResolutionPresetMedium:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset640x480;
+          _previewSize = CGSizeMake(640, 480);
+          break;
+        }
+      case FLTResolutionPresetLow:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset352x288]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset352x288;
+          _previewSize = CGSizeMake(352, 288);
+          break;
+        }
+      default:
+        if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetLow]) {
+          _videoCaptureSession.sessionPreset = AVCaptureSessionPresetLow;
+          _previewSize = CGSizeMake(352, 288);
+        } else {
+          NSError *error =
+              [NSError errorWithDomain:NSCocoaErrorDomain
+                                  code:NSURLErrorUnknown
+                              userInfo:@{
+                                NSLocalizedDescriptionKey :
+                                    @"No capture session available for current capture session."
+                              }];
+          @throw error;
+        }
+    }
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
 }
@@ -691,9 +707,7 @@ NSString *const errorMethod = @"error";
           [result sendSuccessWithData:self->_videoRecordingPath];
           self->_videoRecordingPath = nil;
         } else {
-          [result sendErrorWithCode:@"IOError"
-                            message:@"AVAssetWriter could not finish writing!"
-                            details:nil];
+          [result sendError:self->_videoWriter.error];
         }
       }];
     }
@@ -1103,6 +1117,13 @@ NSString *const errorMethod = @"error";
 
   NSDictionary *videoSettings = [_captureVideoOutput
       recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4];
+
+  [videoSettings setValue:AVVideoCodecTypeH264 forKey:AVVideoCodecKey];
+
+  NSMutableDictionary* compressionPropertiesDict = [NSMutableDictionary new];
+  compressionPropertiesDict[AVVideoProfileLevelKey] = AVVideoProfileLevelH264High40;
+  [videoSettings setValue:compressionPropertiesDict forKey:AVVideoCompressionPropertiesKey];      
+
   _videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
                                                          outputSettings:videoSettings];
 

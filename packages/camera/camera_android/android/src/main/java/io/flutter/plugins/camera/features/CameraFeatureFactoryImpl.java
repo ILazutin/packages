@@ -5,6 +5,7 @@
 package io.flutter.plugins.camera.features;
 
 import android.app.Activity;
+import android.hardware.camera2.CameraManager;
 import androidx.annotation.NonNull;
 import io.flutter.plugins.camera.CameraProperties;
 import io.flutter.plugins.camera.DartMessenger;
@@ -16,6 +17,7 @@ import io.flutter.plugins.camera.features.flash.FlashFeature;
 import io.flutter.plugins.camera.features.focuspoint.FocusPointFeature;
 import io.flutter.plugins.camera.features.fpsrange.FpsRangeFeature;
 import io.flutter.plugins.camera.features.noisereduction.NoiseReductionFeature;
+import io.flutter.plugins.camera.features.resolution.ResolutionAspectRatio;
 import io.flutter.plugins.camera.features.resolution.ResolutionFeature;
 import io.flutter.plugins.camera.features.resolution.ResolutionPreset;
 import io.flutter.plugins.camera.features.sensororientation.SensorOrientationFeature;
@@ -53,9 +55,11 @@ public class CameraFeatureFactoryImpl implements CameraFeatureFactory {
   @Override
   public ResolutionFeature createResolutionFeature(
       @NonNull CameraProperties cameraProperties,
+      @NonNull CameraManager cameraManager,
       ResolutionPreset initialSetting,
+      ResolutionAspectRatio aspectRatio,
       String cameraName) {
-    return new ResolutionFeature(cameraProperties, initialSetting, cameraName);
+    return new ResolutionFeature(cameraProperties, cameraManager, initialSetting, aspectRatio, cameraName);
   }
 
   @Override

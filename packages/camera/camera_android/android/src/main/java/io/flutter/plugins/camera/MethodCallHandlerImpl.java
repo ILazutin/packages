@@ -22,6 +22,7 @@ import io.flutter.plugins.camera.features.Point;
 import io.flutter.plugins.camera.features.autofocus.FocusMode;
 import io.flutter.plugins.camera.features.exposurelock.ExposureMode;
 import io.flutter.plugins.camera.features.flash.FlashMode;
+import io.flutter.plugins.camera.features.resolution.ResolutionAspectRatio;
 import io.flutter.plugins.camera.features.resolution.ResolutionPreset;
 import io.flutter.view.TextureRegistry;
 import java.util.HashMap;
@@ -375,6 +376,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   private void instantiateCamera(MethodCall call, Result result) throws CameraAccessException {
     String cameraName = call.argument("cameraName");
     String preset = call.argument("resolutionPreset");
+    String aspectRatio = call.argument("resolutionAspectRatio");
     boolean enableAudio = call.argument("enableAudio");
 
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
@@ -385,6 +387,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     CameraProperties cameraProperties =
         new CameraPropertiesImpl(cameraName, CameraUtils.getCameraManager(activity));
     ResolutionPreset resolutionPreset = ResolutionPreset.valueOf(preset);
+    ResolutionAspectRatio resolutionAspectRatio = ResolutionAspectRatio.valueOf(aspectRatio);
 
     camera =
         new Camera(
@@ -394,6 +397,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             dartMessenger,
             cameraProperties,
             resolutionPreset,
+            resolutionAspectRatio,
             enableAudio);
 
     Map<String, Object> reply = new HashMap<>();

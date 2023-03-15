@@ -4,15 +4,24 @@
 
 package io.flutter.plugins.camera.features.resolution;
 
+import static java.lang.Math.max;
+
 import android.annotation.TargetApi;
+import android.graphics.ImageFormat;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.EncoderProfiles;
 import android.os.Build;
 import android.util.Size;
+import android.util.Log;
 import androidx.annotation.VisibleForTesting;
 import io.flutter.plugins.camera.CameraProperties;
 import io.flutter.plugins.camera.features.CameraFeature;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -28,6 +37,8 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
   private CamcorderProfile recordingProfileLegacy;
   private EncoderProfiles recordingProfile;
   private ResolutionPreset currentSetting;
+  private ResolutionAspectRatio aspectRatio;
+  private CameraManager cameraManager;
   private int cameraId;
 
   /**
@@ -38,9 +49,11 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
    * @param cameraName Camera identifier of the camera for which to configure the resolution.
    */
   public ResolutionFeature(
-      CameraProperties cameraProperties, ResolutionPreset resolutionPreset, String cameraName) {
+      CameraProperties cameraProperties, CameraManager cameraManager, ResolutionPreset resolutionPreset, ResolutionAspectRatio aspectRatio, String cameraName) {
     super(cameraProperties);
+    this.cameraManager = cameraManager;
     this.currentSetting = resolutionPreset;
+    this.aspectRatio = aspectRatio;
     try {
       this.cameraId = Integer.parseInt(cameraName, 10);
     } catch (NumberFormatException e) {
@@ -79,7 +92,30 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
    * @return The optimal capture size.
    */
   public Size getCaptureSize() {
-    return this.captureSize;
+    try {
+        CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraProperties.getCameraName());
+        StreamConfigurationMap configs = characteristics.get(
+                CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        Size[] outputSizes = new Size[0];
+        try {
+          outputSizes = configs.getOutputSizes(ImageFormat.JPEG);
+        } catch (Exception exception) {
+          Log.e("CameraResolution", exception.toString());
+        }
+
+        Size[] highRes = new Size[0];
+        try {
+          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            highRes = configs.getHighResolutionOutputSizes(ImageFormat.JPEG);
+          }
+        } catch (Exception exception) {
+          Log.e("CameraResolution", exception.toString());
+        }
+
+        return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
+    } catch (Exception exception) {
+        return this.captureSize;
+    }
   }
 
   @Override
@@ -109,7 +145,7 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
   }
 
   @VisibleForTesting
-  static Size computeBestPreviewSize(int cameraId, ResolutionPreset preset)
+  static Size computeBestPreviewSize(int cameraId, ResolutionPreset preset, ResolutionAspectRatio aspectRatio)
       throws IndexOutOfBoundsException {
     if (preset.ordinal() > ResolutionPreset.high.ordinal()) {
       preset = ResolutionPreset.high;
@@ -121,7 +157,21 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       EncoderProfiles.VideoProfile defaultVideoProfile = videoProfiles.get(0);
 
       if (defaultVideoProfile != null) {
-        return new Size(defaultVideoProfile.getWidth(), defaultVideoProfile.getHeight());
+        int width = defaultVideoProfile.getWidth();
+        int height = defaultVideoProfile.getHeight();
+        int maxSize = max(width, height);
+
+        double scale;
+        if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
+          scale = 9/16f;
+        } else {
+          scale = 3/4f;
+        }
+        if (maxSize == width) {
+          return new Size(maxSize, (int) Math.round(maxSize * scale));
+        } else {
+          return new Size((int) Math.round(maxSize * scale), maxSize);
+        }
       }
     }
 
@@ -129,7 +179,29 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
     // This should be removed when reverting that fallback behavior: https://github.com/flutter/flutter/issues/119668.
     CamcorderProfile profile =
         getBestAvailableCamcorderProfileForResolutionPresetLegacy(cameraId, preset);
-    return new Size(profile.videoFrameWidth, profile.videoFrameHeight);
+    int width;
+    int height;
+    if (profile != null) {
+      width = profile.videoFrameWidth;
+      height = profile.videoFrameHeight;
+    } else {
+      width = 1280;
+      height = 720;
+    }
+    int maxSize = max(width, height);
+
+    double scale;
+    if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
+      scale = 9/16f;
+    } else {
+      scale = 3/4f;
+    }
+
+    if (maxSize == width) {
+      return new Size(maxSize, (int) Math.round(maxSize * scale));
+    } else {
+      return new Size((int) Math.round(maxSize * scale), maxSize);
+    }
   }
 
   /**
@@ -264,7 +336,22 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
 
       if (defaultVideoProfile != null) {
         captureSizeCalculated = true;
-        captureSize = new Size(defaultVideoProfile.getWidth(), defaultVideoProfile.getHeight());
+        int width = defaultVideoProfile.getWidth();
+        int height = defaultVideoProfile.getHeight();
+        int maxSize = max(width, height);
+
+        double scale;
+        if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
+          scale = 9/16f;
+        } else {
+          scale = 3/4f;
+        }
+
+        if (maxSize == width) {
+          captureSize = new Size(maxSize, (int) Math.round(maxSize * scale));
+        } else {
+          captureSize = new Size((int) Math.round(maxSize * scale), maxSize);
+        }
       }
     }
 
@@ -273,10 +360,61 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       CamcorderProfile camcorderProfile =
           getBestAvailableCamcorderProfileForResolutionPresetLegacy(cameraId, resolutionPreset);
       recordingProfileLegacy = camcorderProfile;
-      captureSize =
-          new Size(recordingProfileLegacy.videoFrameWidth, recordingProfileLegacy.videoFrameHeight);
+      int width;
+      int height;
+      if (recordingProfileLegacy != null) {
+        width = recordingProfileLegacy.videoFrameWidth;
+        height = recordingProfileLegacy.videoFrameHeight;
+      } else {
+        width = 1280;
+        height = 720;
+      }
+      int maxSize = max(width, height);
+
+      double scale;
+      if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
+        scale = 9/16f;
+      } else {
+        scale = 3/4f;
+      }
+
+      if (maxSize == width) {
+        captureSize = new Size(maxSize, (int) Math.round(maxSize * scale));
+      } else {
+        captureSize = new Size((int) Math.round(maxSize * scale), maxSize);
+      }
     }
 
     previewSize = computeBestPreviewSize(cameraId, resolutionPreset);
+  }
+
+  private Size getFirstEligibleSizeForAspectRatio(Size[] highResSizes, Size[] standardSizes) {
+    double widthDivider;
+    double heightDivider;
+    if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
+      widthDivider = 16f;
+      heightDivider = 9f;
+    } else {
+      widthDivider = 4f;
+      heightDivider = 3f;
+    }
+
+    if (highResSizes != null) {
+      for (Size currentSize : highResSizes) {
+        if ((currentSize.getWidth() / widthDivider) == (currentSize.getHeight() / heightDivider)) {
+          return currentSize;
+        }
+      }
+    }
+
+    if (standardSizes != null) {
+      for (Size currentSize : standardSizes) {
+        if ((currentSize.getWidth() / widthDivider) == (currentSize.getHeight() / heightDivider)) {
+          return currentSize;
+        }
+      }
+    }
+
+    return this.captureSize;
   }
 }

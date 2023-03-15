@@ -51,6 +51,7 @@ import io.flutter.plugins.camera.features.flash.FlashMode;
 import io.flutter.plugins.camera.features.focuspoint.FocusPointFeature;
 import io.flutter.plugins.camera.features.fpsrange.FpsRangeFeature;
 import io.flutter.plugins.camera.features.noisereduction.NoiseReductionFeature;
+import io.flutter.plugins.camera.features.resolution.ResolutionAspectRatio;
 import io.flutter.plugins.camera.features.resolution.ResolutionFeature;
 import io.flutter.plugins.camera.features.resolution.ResolutionPreset;
 import io.flutter.plugins.camera.features.sensororientation.DeviceOrientationManager;
@@ -136,6 +137,7 @@ public class CameraTest {
             mockDartMessenger,
             mockCameraProperties,
             resolutionPreset,
+            ResolutionAspectRatio.RATIO_16_9,
             enableAudio);
 
     TestUtils.setPrivateField(camera, "captureSession", mockCaptureSession);
@@ -179,6 +181,7 @@ public class CameraTest {
             mockDartMessenger,
             mockCameraProperties,
             resolutionPreset,
+            ResolutionAspectRatio.RATIO_16_9,
             enableAudio);
 
     verify(mockCameraFeatureFactory, times(1))

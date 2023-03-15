@@ -11,6 +11,7 @@ export 'package:camera_platform_interface/camera_platform_interface.dart'
         ExposureMode,
         FocusMode,
         ResolutionPreset,
+        ResolutionAspectRatio,
         XFile,
         ImageFormatGroup;
 

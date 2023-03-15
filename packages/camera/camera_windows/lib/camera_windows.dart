@@ -66,7 +66,8 @@ class CameraWindows extends CameraPlatform {
   @override
   Future<int> createCamera(
     CameraDescription cameraDescription,
-    ResolutionPreset? resolutionPreset, {
+    ResolutionPreset? resolutionPreset,
+    ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
   }) async {
     try {
@@ -75,6 +76,10 @@ class CameraWindows extends CameraPlatform {
           .invokeMapMethod<String, dynamic>('create', <String, dynamic>{
         'cameraName': cameraDescription.name,
         'resolutionPreset': _serializeResolutionPreset(resolutionPreset),
+        'resolutionAspectRatio': _serializeResolutionAspectRatio(
+            resolutionAspectRatio != null
+                ? resolutionAspectRatio
+                : ResolutionAspectRatio.RATIO_16_9),
         'enableAudio': enableAudio,
       });
 
@@ -381,6 +386,19 @@ class CameraWindows extends CameraPlatform {
         return 'medium';
       case ResolutionPreset.low:
         return 'low';
+    }
+  }
+
+  /// Returns the resolution aspect ratio as a String.
+  String _serializeResolutionAspectRatio(
+      ResolutionAspectRatio resolutionAspectRatio) {
+    switch (resolutionAspectRatio) {
+      case ResolutionAspectRatio.RATIO_16_9:
+        return 'ratio_16_9';
+      case ResolutionAspectRatio.RATIO_4_3:
+        return 'ratio_4_3';
+      default:
+        throw ArgumentError('Unknown ResolutionAspectRatio value');
     }
   }
 
