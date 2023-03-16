@@ -30,7 +30,11 @@ class _CameraAppState extends State<CameraApp> {
   @override
   void initState() {
     super.initState();
-    controller = CameraController(_cameras[0], ResolutionPreset.max);
+    controller = CameraController(
+      _cameras[0],
+      ResolutionPreset.max,
+      ResolutionAspectRatio.RATIO_16_9,
+    );
     controller.initialize().then((_) {
       if (!mounted) {
         return;

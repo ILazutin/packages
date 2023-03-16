@@ -543,6 +543,7 @@ void main() {
           final int cameraId = await CameraPlatform.instance.createCamera(
             cameraDescription,
             ResolutionPreset.ultraHigh,
+            ResolutionAspectRatio.RATIO_16_9,
             enableAudio: true,
           );
 
@@ -585,6 +586,7 @@ void main() {
           final int cameraId = await CameraPlatform.instance.createCamera(
             cameraDescription,
             null,
+            ResolutionAspectRatio.RATIO_16_9,
           );
 
           expect(
@@ -623,6 +625,7 @@ void main() {
               sensorOrientation: 0,
             ),
             ResolutionPreset.ultraHigh,
+            ResolutionAspectRatio.RATIO_16_9,
           ),
           throwsA(
             isA<CameraException>().having(

@@ -117,6 +117,9 @@ class FakeController extends ValueNotifier<CameraValue>
 
   @override
   Future<void> resumePreview() async {}
+  
+  @override
+  ResolutionAspectRatio get resolutionAspectRatio => ResolutionAspectRatio.RATIO_16_9;
 }
 
 void main() {

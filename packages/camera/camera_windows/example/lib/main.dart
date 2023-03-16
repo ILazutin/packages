@@ -96,6 +96,7 @@ class _MyAppState extends State<MyApp> {
       cameraId = await CameraPlatform.instance.createCamera(
         camera,
         _resolutionPreset,
+        ResolutionAspectRatio.RATIO_16_9,
         enableAudio: _recordAudio,
       );
 

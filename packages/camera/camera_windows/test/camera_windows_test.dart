@@ -40,6 +40,7 @@ void main() {
               lensDirection: CameraLensDirection.front,
               sensorOrientation: 0),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         );
 
         // Assert
@@ -79,6 +80,7 @@ void main() {
               sensorOrientation: 0,
             ),
             ResolutionPreset.high,
+            ResolutionAspectRatio.RATIO_16_9,
           ),
           throwsA(
             isA<CameraException>()
@@ -144,6 +146,7 @@ void main() {
             sensorOrientation: 0,
           ),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         );
 
         // Act
@@ -181,6 +184,7 @@ void main() {
             sensorOrientation: 0,
           ),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         );
         await plugin.initializeCamera(cameraId);
 
@@ -223,6 +227,7 @@ void main() {
             sensorOrientation: 0,
           ),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         );
         await plugin.initializeCamera(cameraId);
       });
@@ -302,6 +307,7 @@ void main() {
             sensorOrientation: 0,
           ),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         );
         await plugin.initializeCamera(cameraId);
       });

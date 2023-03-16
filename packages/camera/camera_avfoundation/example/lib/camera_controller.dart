@@ -226,6 +226,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     _cameraId = await CameraPlatform.instance.createCamera(
       description,
       resolutionPreset,
+      ResolutionAspectRatio.RATIO_16_9,
       enableAudio: enableAudio,
     );
 

@@ -164,6 +164,7 @@ void main() {
             sensorOrientation: 0,
           ),
           ResolutionPreset.high,
+          ResolutionAspectRatio.RATIO_16_9,
         ),
         throwsUnimplementedError,
       );
