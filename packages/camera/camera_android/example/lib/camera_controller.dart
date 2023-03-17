@@ -219,6 +219,8 @@ class CameraController extends ValueNotifier<CameraValue> {
       resolutionPreset,
       ResolutionAspectRatio.RATIO_16_9,
       enableAudio: enableAudio,
+      enableLivePhoto: true,
+      livePhotoMaxDuration: const Duration(seconds: 10),
     );
 
     CameraPlatform.instance
@@ -278,11 +280,12 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Captures an image and returns the file where it was saved.
   ///
   /// Throws a [CameraException] if the capture fails.
-  Future<XFile> takePicture() async {
+  Future<List<XFile>> takePicture() async {
     value = value.copyWith(isTakingPicture: true);
-    final XFile file = await CameraPlatform.instance.takePicture(_cameraId);
+    final List<XFile> files =
+        await CameraPlatform.instance.takePicture(_cameraId);
     value = value.copyWith(isTakingPicture: false);
-    return file;
+    return files;
   }
 
   /// Start streaming images from platform camera.

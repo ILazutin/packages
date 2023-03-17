@@ -1008,18 +1008,18 @@ void main() {
         final MockCamera camera = MockCamera();
         final MockXFile capturedPicture = MockXFile();
 
-        when(camera.takePicture)
-            .thenAnswer((Invocation _) => Future<XFile>.value(capturedPicture));
+        when(camera.takePicture).thenAnswer((Invocation _) =>
+            Future<List<XFile>>.value(<XFile>[capturedPicture]));
 
         // Save the camera in the camera plugin.
         (CameraPlatform.instance as CameraPlugin).cameras[cameraId] = camera;
 
-        final XFile picture =
+        final List<XFile> pictures =
             await CameraPlatform.instance.takePicture(cameraId);
 
         verify(camera.takePicture).called(1);
 
-        expect(picture, equals(capturedPicture));
+        expect(pictures.first, equals(capturedPicture));
       });
 
       group('throws PlatformException', () {

@@ -188,8 +188,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _takePicture() async {
-    final XFile file = await CameraPlatform.instance.takePicture(_cameraId);
-    _showInSnackBar('Picture captured to: ${file.path}');
+    final List<XFile> files =
+        await CameraPlatform.instance.takePicture(_cameraId);
+    _showInSnackBar('Picture captured to: ${files.first.path}');
   }
 
   Future<void> _recordTimed(int seconds) async {

@@ -230,6 +230,8 @@ class CameraController extends ValueNotifier<CameraValue> {
     this.resolutionAspectRatio, {
     this.enableAudio = true,
     this.imageFormatGroup,
+    this.enableLivePhoto = true,
+    this.livePhotoMaxDuration,
   }) : super(const CameraValue.uninitialized());
 
   /// The properties of the camera device controlled by this controller.
@@ -255,6 +257,10 @@ class CameraController extends ValueNotifier<CameraValue> {
   ///
   /// When null the imageFormat will fallback to the platforms default.
   final ImageFormatGroup? imageFormatGroup;
+
+  final bool enableLivePhoto;
+
+  final Duration? livePhotoMaxDuration;
 
   /// The id of a camera that hasn't been initialized.
   @visibleForTesting
@@ -304,6 +310,8 @@ class CameraController extends ValueNotifier<CameraValue> {
         resolutionPreset,
         resolutionAspectRatio,
         enableAudio: enableAudio,
+        enableLivePhoto: enableLivePhoto,
+        livePhotoMaxDuration: livePhotoMaxDuration,
       );
 
       _unawaited(CameraPlatform.instance
@@ -390,7 +398,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Captures an image and returns the file where it was saved.
   ///
   /// Throws a [CameraException] if the capture fails.
-  Future<XFile> takePicture() async {
+  Future<List<XFile>> takePicture() async {
     _throwIfNotInitialized('takePicture');
     if (value.isTakingPicture) {
       throw CameraException(
@@ -400,9 +408,9 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
     try {
       value = value.copyWith(isTakingPicture: true);
-      final XFile file = await CameraPlatform.instance.takePicture(_cameraId);
+      final List<XFile> files = await CameraPlatform.instance.takePicture(_cameraId);
       value = value.copyWith(isTakingPicture: false);
-      return file;
+      return files;
     } on PlatformException catch (e) {
       value = value.copyWith(isTakingPicture: false);
       throw CameraException(e.code, e.message);

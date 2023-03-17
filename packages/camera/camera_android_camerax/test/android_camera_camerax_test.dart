@@ -114,6 +114,7 @@ void main() {
 
     expect(
         await camera.createCamera(testCameraDescription, testResolutionPreset,
+            ResolutionAspectRatio.RATIO_16_9,
             enableAudio: enableAudio),
         equals(testSurfaceTextureId));
 
@@ -174,6 +175,7 @@ void main() {
     when(camera.testPreview.setSurfaceProvider())
         .thenAnswer((_) async => cameraId);
     await camera.createCamera(testCameraDescription, testResolutionPreset,
+        ResolutionAspectRatio.RATIO_16_9,
         enableAudio: enableAudio);
 
     when(camera.processCameraProvider!.bindToLifecycle(

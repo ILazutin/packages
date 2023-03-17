@@ -89,6 +89,8 @@ class MethodChannelCamera extends CameraPlatform {
     ResolutionPreset? resolutionPreset,
     ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
+    bool enableLivePhoto = false,
+    Duration? livePhotoMaxDuration,
   }) async {
     try {
       final Map<String, dynamic>? reply = await _channel
@@ -98,9 +100,7 @@ class MethodChannelCamera extends CameraPlatform {
             ? _serializeResolutionPreset(resolutionPreset)
             : null,
         'resolutionAspectRatio': _serializeResolutionAspectRatio(
-            resolutionAspectRatio != null
-                ? resolutionAspectRatio
-                : ResolutionAspectRatio.RATIO_16_9),
+            resolutionAspectRatio ?? ResolutionAspectRatio.RATIO_16_9),
         'enableAudio': enableAudio,
       });
 
@@ -223,20 +223,20 @@ class MethodChannelCamera extends CameraPlatform {
   }
 
   @override
-  Future<XFile> takePicture(int cameraId) async {
-    final String? path = await _channel.invokeMethod<String>(
+  Future<List<XFile>> takePicture(int cameraId) async {
+    final List<String>? paths = await _channel.invokeMethod<List<String>>(
       'takePicture',
       <String, dynamic>{'cameraId': cameraId},
     );
 
-    if (path == null) {
+    if (paths == null) {
       throw CameraException(
         'INVALID_PATH',
         'The platform "$defaultTargetPlatform" did not return a path while reporting success. The platform should always return a valid path or report an error.',
       );
     }
 
-    return XFile(path);
+    return paths.map((e) => XFile(e)).toList();
   }
 
   @override
@@ -565,8 +565,6 @@ class MethodChannelCamera extends CameraPlatform {
         return 'RATIO_16_9';
       case ResolutionAspectRatio.RATIO_4_3:
         return 'RATIO_4_3';
-      default:
-        throw ArgumentError('Unknown ResolutionAspectRatio value');
     }
   }
 

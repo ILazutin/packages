@@ -296,6 +296,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       _cameraId = await CameraPlatform.instance.createCamera(
         description,
         resolutionPreset,
+        ResolutionAspectRatio.RATIO_16_9,
         enableAudio: enableAudio,
       );
 
@@ -383,7 +384,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Captures an image and returns the file where it was saved.
   ///
   /// Throws a [CameraException] if the capture fails.
-  Future<XFile> takePicture() async {
+  Future<List<XFile>> takePicture() async {
     _throwIfNotInitialized('takePicture');
     if (value.isTakingPicture) {
       throw CameraException(
@@ -393,9 +394,9 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
     try {
       value = value.copyWith(isTakingPicture: true);
-      final XFile file = await CameraPlatform.instance.takePicture(_cameraId);
+      final List<XFile> files = await CameraPlatform.instance.takePicture(_cameraId);
       value = value.copyWith(isTakingPicture: false);
-      return file;
+      return files;
     } on PlatformException catch (e) {
       value = value.copyWith(isTakingPicture: false);
       throw CameraException(e.code, e.message);

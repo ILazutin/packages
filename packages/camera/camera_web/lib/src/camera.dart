@@ -232,7 +232,7 @@ class Camera {
   ///
   /// Enables the camera flash (torch mode) for a period of taking a picture
   /// if the flash mode is either [FlashMode.auto] or [FlashMode.always].
-  Future<XFile> takePicture() async {
+  Future<List<XFile>> takePicture() async {
     final bool shouldEnableTorchMode =
         flashMode == FlashMode.auto || flashMode == FlashMode.always;
 
@@ -262,7 +262,7 @@ class Camera {
       _setTorchMode(enabled: false);
     }
 
-    return XFile(html.Url.createObjectUrl(blob));
+    return <XFile>[XFile(html.Url.createObjectUrl(blob))];
   }
 
   /// Returns a size of the camera video based on its first video track size.

@@ -687,15 +687,15 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
   }
 
   void onTakePictureButtonPressed() {
-    takePicture().then((XFile? file) {
+    takePicture().then((List<XFile>? files) {
       if (mounted) {
         setState(() {
-          imageFile = file;
+          imageFile = files?.first;
           videoController?.dispose();
           videoController = null;
         });
-        if (file != null) {
-          showInSnackBar('Picture saved to ${file.path}');
+        if (files != null) {
+          showInSnackBar('Picture saved to ${files.first.path}');
         }
       }
     });
@@ -993,7 +993,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     await vController.play();
   }
 
-  Future<XFile?> takePicture() async {
+  Future<List<XFile>?> takePicture() async {
     final CameraController? cameraController = controller;
     if (cameraController == null || !cameraController.value.isInitialized) {
       showInSnackBar('Error: select a camera first.');
@@ -1006,8 +1006,8 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     }
 
     try {
-      final XFile file = await cameraController.takePicture();
-      return file;
+      final List<XFile> files = await cameraController.takePicture();
+      return files;
     } on CameraException catch (e) {
       _showCameraException(e);
       return null;

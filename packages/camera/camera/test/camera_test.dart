@@ -46,7 +46,7 @@ CameraClosingEvent get mockOnCameraClosingEvent => const CameraClosingEvent(13);
 CameraErrorEvent get mockOnCameraErrorEvent =>
     const CameraErrorEvent(13, 'closing');
 
-XFile mockTakePicture = XFile('foo/bar.png');
+List<XFile> mockTakePicture = <XFile>[XFile('foo/bar.png')];
 
 XFile mockVideoRecordingXFile = XFile('foo/bar.mpeg');
 
@@ -279,9 +279,9 @@ void main() {
         ResolutionAspectRatio.RATIO_16_9,
       );
       await cameraController.initialize();
-      final XFile xFile = await cameraController.takePicture();
+      final List<XFile> xFiles = await cameraController.takePicture();
 
-      expect(xFile.path, mockTakePicture.path);
+      expect(xFiles.first.path, mockTakePicture.first.path);
     });
 
     test('takePicture() throws $CameraException on $PlatformException',
@@ -1527,9 +1527,9 @@ class MockCameraPlatform extends Mock
           mockOnDeviceOrientationChangedEvent);
 
   @override
-  Future<XFile> takePicture(int cameraId) => mockPlatformException
+  Future<List<XFile>> takePicture(int cameraId) => mockPlatformException
       ? throw PlatformException(code: 'foo', message: 'bar')
-      : Future<XFile>.value(mockTakePicture);
+      : Future<List<XFile>>.value(mockTakePicture);
 
   @override
   Future<void> prepareForVideoRecording() async =>

@@ -559,7 +559,7 @@ void main() {
           methods: <String, dynamic>{'takePicture': '/test/path.jpg'});
 
       // Act
-      final XFile file = await camera.takePicture(cameraId);
+      final List<XFile> file = await camera.takePicture(cameraId);
 
       // Assert
       expect(channel.log, <Matcher>[
@@ -567,7 +567,7 @@ void main() {
           'cameraId': cameraId,
         }),
       ]);
-      expect(file.path, '/test/path.jpg');
+      expect(file.first.path, '/test/path.jpg');
     });
 
     test('Should prepare for video recording', () async {

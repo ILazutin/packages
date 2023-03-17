@@ -107,7 +107,7 @@ class FakeController extends ValueNotifier<CameraValue>
   Future<XFile> stopVideoRecording() async => XFile('');
 
   @override
-  Future<XFile> takePicture() async => XFile('');
+  Future<List<XFile>> takePicture() async => <XFile>[XFile('')];
 
   @override
   Future<void> unlockCaptureOrientation() async {}
@@ -117,9 +117,16 @@ class FakeController extends ValueNotifier<CameraValue>
 
   @override
   Future<void> resumePreview() async {}
-  
+
   @override
-  ResolutionAspectRatio get resolutionAspectRatio => ResolutionAspectRatio.RATIO_16_9;
+  bool get enableLivePhoto => false;
+
+  @override
+  Duration? get livePhotoMaxDuration => null;
+
+  @override
+  ResolutionAspectRatio get resolutionAspectRatio =>
+      ResolutionAspectRatio.RATIO_16_9;
 }
 
 void main() {

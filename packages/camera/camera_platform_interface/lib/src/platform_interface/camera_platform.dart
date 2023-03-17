@@ -52,6 +52,8 @@ abstract class CameraPlatform extends PlatformInterface {
     ResolutionPreset? resolutionPreset,
     ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
+    bool enableLivePhoto = false,
+    Duration? livePhotoMaxDuration,
   }) {
     throw UnimplementedError('createCamera() is not implemented.');
   }
@@ -116,7 +118,7 @@ abstract class CameraPlatform extends PlatformInterface {
   }
 
   /// Captures an image and returns the file where it was saved.
-  Future<XFile> takePicture(int cameraId) {
+  Future<List<XFile>> takePicture(int cameraId) {
     throw UnimplementedError('takePicture() is not implemented.');
   }
 

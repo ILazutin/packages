@@ -294,9 +294,9 @@ void main() {
         await camera.initialize();
         await camera.play();
 
-        final XFile pictureFile = await camera.takePicture();
+        final List<XFile> pictureFiles = await camera.takePicture();
 
-        expect(pictureFile, isNotNull);
+        expect(pictureFiles.first, isNotNull);
       });
 
       group(
@@ -336,7 +336,7 @@ void main() {
 
           await camera.play();
 
-          final XFile _ = await camera.takePicture();
+          final List<XFile> _ = await camera.takePicture();
 
           verify(
             () => videoTracks.first.applyConstraints(<dynamic, dynamic>{
@@ -371,7 +371,7 @@ void main() {
 
           await camera.play();
 
-          final XFile _ = await camera.takePicture();
+          final List<XFile> _ = await camera.takePicture();
 
           verify(
             () => videoTracks.first.applyConstraints(<dynamic, dynamic>{

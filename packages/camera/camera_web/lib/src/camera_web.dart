@@ -202,6 +202,8 @@ class CameraPlugin extends CameraPlatform {
     ResolutionPreset? resolutionPreset,
     ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
+    bool enableLivePhoto = false,
+    Duration? livePhotoMaxDuration,
   }) async {
     try {
       if (!camerasMetadata.containsKey(cameraDescription)) {
@@ -434,7 +436,7 @@ class CameraPlugin extends CameraPlatform {
   }
 
   @override
-  Future<XFile> takePicture(int cameraId) {
+  Future<List<XFile>> takePicture(int cameraId) {
     try {
       return getCamera(cameraId).takePicture();
     } on html.DomException catch (e) {

@@ -69,6 +69,8 @@ class CameraWindows extends CameraPlatform {
     ResolutionPreset? resolutionPreset,
     ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
+    bool enableLivePhoto = false,
+    Duration? livePhotoMaxDuration,
   }) async {
     try {
       // If resolutionPreset is not specified, plugin selects the highest resolution possible.
@@ -77,10 +79,10 @@ class CameraWindows extends CameraPlatform {
         'cameraName': cameraDescription.name,
         'resolutionPreset': _serializeResolutionPreset(resolutionPreset),
         'resolutionAspectRatio': _serializeResolutionAspectRatio(
-            resolutionAspectRatio != null
-                ? resolutionAspectRatio
-                : ResolutionAspectRatio.RATIO_16_9),
+            resolutionAspectRatio ?? ResolutionAspectRatio.RATIO_16_9),
         'enableAudio': enableAudio,
+        'enableLivePhoto': enableLivePhoto,
+        'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds,
       });
 
       if (reply == null) {
@@ -204,14 +206,14 @@ class CameraWindows extends CameraPlatform {
   }
 
   @override
-  Future<XFile> takePicture(int cameraId) async {
+  Future<List<XFile>> takePicture(int cameraId) async {
     final String? path;
     path = await pluginChannel.invokeMethod<String>(
       'takePicture',
       <String, dynamic>{'cameraId': cameraId},
     );
 
-    return XFile(path!);
+    return <XFile>[XFile(path!)];
   }
 
   @override
@@ -397,8 +399,6 @@ class CameraWindows extends CameraPlatform {
         return 'ratio_16_9';
       case ResolutionAspectRatio.RATIO_4_3:
         return 'ratio_4_3';
-      default:
-        throw ArgumentError('Unknown ResolutionAspectRatio value');
     }
   }
 

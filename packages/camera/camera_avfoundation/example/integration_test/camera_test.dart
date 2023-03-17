@@ -58,10 +58,10 @@ void main() {
     final Size expectedSize = presetExpectedSizes[preset]!;
 
     // Take Picture
-    final XFile file = await controller.takePicture();
+    final List<XFile> files = await controller.takePicture();
 
     // Load picture
-    final File fileImage = File(file.path);
+    final File fileImage = File(files.first.path);
     final Image image = await decodeImageFromList(fileImage.readAsBytesSync());
 
     // Verify image dimensions are as expected

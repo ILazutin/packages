@@ -121,8 +121,11 @@ class AndroidCameraCameraX extends CameraPlatform {
   @override
   Future<int> createCamera(
     CameraDescription cameraDescription,
-    ResolutionPreset? resolutionPreset, {
+    ResolutionPreset? resolutionPreset,
+    ResolutionAspectRatio? resolutionAspectRatio, {
     bool enableAudio = false,
+    bool enableLivePhoto = false,
+    Duration? livePhotoMaxDuration,
   }) async {
     // Must obtain proper permissions before attempting to access a camera.
     await requestCameraPermissions(enableAudio);
