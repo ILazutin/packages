@@ -385,7 +385,7 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       }
     }
 
-    previewSize = computeBestPreviewSize(cameraId, resolutionPreset);
+    previewSize = computeBestPreviewSize(cameraId, resolutionPreset, aspectRatio);
   }
 
   private Size getFirstEligibleSizeForAspectRatio(Size[] highResSizes, Size[] standardSizes) {

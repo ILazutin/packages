@@ -378,6 +378,8 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     String preset = call.argument("resolutionPreset");
     String aspectRatio = call.argument("resolutionAspectRatio");
     boolean enableAudio = call.argument("enableAudio");
+    boolean enableLivePhoto = Boolean.TRUE.equals(call.argument("enableLivePhoto"));
+    int livePhotoMaxDuration = call.argument("livePhotoMaxDuration");
 
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
         textureRegistry.createSurfaceTexture();
@@ -398,7 +400,10 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             cameraProperties,
             resolutionPreset,
             resolutionAspectRatio,
-            enableAudio);
+            enableAudio,
+            enableLivePhoto,
+            livePhotoMaxDuration
+        );
 
     Map<String, Object> reply = new HashMap<>();
     reply.put("cameraId", flutterSurfaceTexture.id());

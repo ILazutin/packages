@@ -30,6 +30,7 @@ import android.os.Build.VERSION_CODES;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.util.Size;
 import android.view.Display;
@@ -65,6 +66,7 @@ import io.flutter.plugins.camera.types.CaptureTimeoutsWrapper;
 import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -101,6 +103,9 @@ class Camera
 
   private final SurfaceTextureEntry flutterTexture;
   private final boolean enableAudio;
+  private final boolean enableLivePhoto;
+  private final int livePhotoMaxDuration;
+  private CircularEncoder mCircEncoder;
   private final Context applicationContext;
   private final DartMessenger dartMessenger;
   private final CameraProperties cameraProperties;
@@ -128,6 +133,10 @@ class Camera
   private boolean pausedPreview;
 
   private File captureFile;
+  private File livePhotoOutputFile;
+  private Boolean captureFileSaveComplete;
+  private Boolean livePhotoFileSaveComplete;
+  private LivePhotoHandler livePhotoHandler;
 
   /** Holds the current capture timeouts */
   private CaptureTimeoutsWrapper captureTimeouts;
@@ -182,13 +191,17 @@ class Camera
       final CameraProperties cameraProperties,
       final ResolutionPreset resolutionPreset,
       final ResolutionAspectRatio aspectRatio,
-      final boolean enableAudio) {
+      final boolean enableAudio,
+      final boolean enableLivePhoto,
+      final int livePhotoMaxDuration) {
 
     if (activity == null) {
       throw new IllegalStateException("No activity available!");
     }
     this.activity = activity;
     this.enableAudio = enableAudio;
+    this.enableLivePhoto = enableLivePhoto;
+    this.livePhotoMaxDuration = livePhotoMaxDuration;
     this.flutterTexture = flutterTexture;
     this.dartMessenger = dartMessenger;
     this.applicationContext = activity.getApplicationContext();
@@ -387,6 +400,10 @@ class Camera
     surfaceTexture.setDefaultBufferSize(
         resolutionFeature.getPreviewSize().getWidth(),
         resolutionFeature.getPreviewSize().getHeight());
+//    surfaceTexture.setOnFrameAvailableListener(surfaceTexture1 -> {
+//      surfaceTexture1.updateTexImage();
+//      mCircEncoder.frameAvailableSoon();
+//    });
     Surface flutterSurface = new Surface(surfaceTexture);
     previewRequestBuilder.addTarget(flutterSurface);
 
@@ -395,6 +412,27 @@ class Camera
       // If it is not preview mode, add all surfaces as targets.
       for (Surface surface : remainingSurfaces) {
         previewRequestBuilder.addTarget(surface);
+      }
+    }
+
+    if (enableLivePhoto) {
+      try {
+        livePhotoHandler = new LivePhotoHandler(Looper.getMainLooper());
+        livePhotoHandler.setCamera(this);
+
+        mCircEncoder = new CircularEncoder(
+//                resolutionFeature.getCaptureSize().getWidth(),
+//                resolutionFeature.getCaptureSize().getHeight(),
+                1920,
+                1080,
+                6000000,
+                30000 / 1000,
+                livePhotoMaxDuration / 1000,
+                livePhotoHandler);
+        Surface circSurface = mCircEncoder.getInputSurface();
+        previewRequestBuilder.addTarget(circSurface);
+      } catch (IOException ioe) {
+        throw new RuntimeException(ioe);
       }
     }
 
@@ -447,13 +485,31 @@ class Camera
       for (Surface surface : remainingSurfaces) {
         configs.add(new OutputConfiguration(surface));
       }
+//      if (enableLivePhoto && mCircEncoder != null) {
+//        configs.add(new OutputConfiguration(mCircEncoder.getInputSurface()));
+//      }
       createCaptureSessionWithSessionConfig(configs, callback);
     } else {
       // Collect all surfaces to render to.
       List<Surface> surfaceList = new ArrayList<>();
       surfaceList.add(flutterSurface);
       surfaceList.addAll(remainingSurfaces);
+//      if (enableLivePhoto && mCircEncoder != null) {
+//        surfaceList.add(mCircEncoder.getInputSurface());
+//      }
       createCaptureSession(surfaceList, callback);
+    }
+  }
+
+  void livePhotoFileSaveComplete(int status) {
+    Log.d(TAG, "fileSaveComplete " + status);
+    livePhotoFileSaveComplete = true;
+    if (status == 0 && captureFileSaveComplete) {
+      mCircEncoder.shutdown();
+      List<String> files = new ArrayList<>();
+      files.add(captureFile.getAbsolutePath());
+      files.add(livePhotoOutputFile.getAbsolutePath());
+      dartMessenger.finish(flutterResult, files);
     }
   }
 
@@ -536,6 +592,9 @@ class Camera
     try {
       captureFile = File.createTempFile("CAP", ".jpg", outputDir);
       captureTimeouts.reset();
+      if (enableLivePhoto) {
+        livePhotoOutputFile = File.createTempFile("CAP", ".mp4", outputDir);
+      }
     } catch (IOException | SecurityException e) {
       dartMessenger.error(flutterResult, "cannotCreateFile", e.getMessage(), null);
       return;
@@ -641,6 +700,9 @@ class Camera
       captureSession.stopRepeating();
       Log.i(TAG, "sending capture request");
       captureSession.capture(stillBuilder.build(), captureCallback, backgroundHandler);
+      if (enableLivePhoto) {
+        mCircEncoder.saveVideo(livePhotoOutputFile);
+      }
     } catch (CameraAccessException e) {
       dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
     }
@@ -1082,7 +1144,12 @@ class Camera
             new ImageSaver.Callback() {
               @Override
               public void onComplete(String absolutePath) {
-                dartMessenger.finish(flutterResult, absolutePath);
+                captureFileSaveComplete = true;
+                if (!enableLivePhoto || livePhotoFileSaveComplete) {
+                  List<String> files = new ArrayList<>();
+                  files.add(absolutePath);
+                  dartMessenger.finish(flutterResult, files);
+                }
               }
 
               @Override
@@ -1249,6 +1316,64 @@ class Camera
     @VisibleForTesting
     public static Handler create(Looper looper) {
       return new Handler(looper);
+    }
+  }
+
+  private static class LivePhotoHandler extends Handler implements CircularEncoder.Callback {
+    public static final int MSG_FRAME_AVAILABLE = 1;
+    public static final int MSG_FILE_SAVE_COMPLETE = 2;
+    public static final int MSG_BUFFER_STATUS = 3;
+
+    private WeakReference<Camera> mWeakCamera;
+
+    public LivePhotoHandler(@NonNull Looper looper) {
+      super(looper);
+    }
+
+    public void setCamera(Camera camera) {
+      mWeakCamera = new WeakReference<>(camera);
+    }
+
+    // CircularEncoder.Callback, called on encoder thread
+    @Override
+    public void fileSaveComplete(int status) {
+      sendMessage(obtainMessage(MSG_FILE_SAVE_COMPLETE, status, 0, null));
+    }
+
+    // CircularEncoder.Callback, called on encoder thread
+    @Override
+    public void bufferStatus(long totalTimeMsec) {
+      sendMessage(obtainMessage(MSG_BUFFER_STATUS,
+              (int) (totalTimeMsec >> 32), (int) totalTimeMsec));
+    }
+
+
+    @Override
+    public void handleMessage(Message msg) {
+      Camera camera = mWeakCamera.get();
+      if (camera == null) {
+        Log.d(TAG, "Got message for dead activity");
+        return;
+      }
+
+      switch (msg.what) {
+        case MSG_FILE_SAVE_COMPLETE: {
+          camera.livePhotoFileSaveComplete(msg.arg1);
+          break;
+        }
+        case MSG_FRAME_AVAILABLE: {
+          camera.flutterTexture.surfaceTexture().updateTexImage();
+          break;
+        }
+        case MSG_BUFFER_STATUS: {
+          long duration = (((long) msg.arg1) << 32) |
+                  (((long) msg.arg2) & 0xffffffffL);
+          Log.d(TAG, "Captured duration=" + duration);
+          break;
+        }
+        default:
+          throw new RuntimeException("Unknown message " + msg.what);
+      }
     }
   }
 }
