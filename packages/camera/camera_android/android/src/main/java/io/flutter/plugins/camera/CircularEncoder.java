@@ -16,6 +16,10 @@
 
 package io.flutter.plugins.camera;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -52,13 +56,14 @@ import java.nio.ByteBuffer;
  */
 public class CircularEncoder {
     private static final String TAG = "Camera";
-    private static final boolean VERBOSE = false;
+    private static final boolean VERBOSE = true;
 
     private static final String MIME_TYPE = "video/avc";    // H.264 Advanced Video Coding
     private static final int IFRAME_INTERVAL = 1;           // sync frame every second
 
     private EncoderThread mEncoderThread;
     private Surface mInputSurface;
+    private ImageReader imageStreamReader;
     private MediaCodec mEncoder;
 
     /**
@@ -91,7 +96,7 @@ public class CircularEncoder {
      * @param desiredSpanSec How many seconds of video we want to have in our buffer at any time.
      */
     public CircularEncoder(int width, int height, int bitRate, int frameRate, int desiredSpanSec,
-                           Callback cb) throws IOException {
+                           Callback cb, ImageReader imageStreamReader) throws IOException {
         // The goal is to size the buffer so that we can accumulate N seconds worth of video,
         // where N is passed in as "desiredSpanSec".  If the codec generates data at roughly
         // the requested bit rate, we can compute it as time * bitRate / bitsPerByte.
@@ -101,6 +106,8 @@ public class CircularEncoder {
         //
         // Since we have to start muxing from a sync frame, we want to ensure that there's
         // room for at least one full GOP in the buffer, preferrably two.
+        this.imageStreamReader = imageStreamReader;
+
         if (desiredSpanSec < IFRAME_INTERVAL * 2) {
             throw new RuntimeException("Requested time span is too short: " + desiredSpanSec +
                     " vs. " + (IFRAME_INTERVAL * 2));
@@ -113,8 +120,8 @@ public class CircularEncoder {
         // Set some properties.  Failing to specify some of these can cause the MediaCodec
         // configure() call to throw an unhelpful exception.
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, bitRate);
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 32 * width * height * frameRate / 100);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
         if (VERBOSE) Log.d(TAG, "format: " + format);
@@ -123,12 +130,12 @@ public class CircularEncoder {
         // we can use for input and wrap it with a class that handles the EGL work.
         mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mInputSurface = mEncoder.createInputSurface();
+//        mInputSurface = mEncoder.createInputSurface();
         mEncoder.start();
 
         // Start the encoder thread last.  That way we're sure it can see all of the state
         // we've initialized.
-        mEncoderThread = new EncoderThread(mEncoder, encBuffer, cb);
+        mEncoderThread = new EncoderThread(mEncoder, encBuffer, cb, imageStreamReader);
         mEncoderThread.start();
         mEncoderThread.waitUntilReady();
     }
@@ -221,16 +228,18 @@ public class CircularEncoder {
         private EncoderHandler mHandler;
         private CircularEncoderBuffer mEncBuffer;
         private CircularEncoder.Callback mCallback;
+        private ImageReader mimageStreamReader;
         private int mFrameNum;
 
         private final Object mLock = new Object();
         private volatile boolean mReady = false;
 
         public EncoderThread(MediaCodec mediaCodec, CircularEncoderBuffer encBuffer,
-                             CircularEncoder.Callback callback) {
+                             CircularEncoder.Callback callback, ImageReader imageStreamReader) {
             mEncoder = mediaCodec;
             mEncBuffer = encBuffer;
             mCallback = callback;
+            mimageStreamReader = imageStreamReader;
 
             mBufferInfo = new MediaCodec.BufferInfo();
         }
@@ -294,8 +303,23 @@ public class CircularEncoder {
         public void drainEncoder() {
             final int TIMEOUT_USEC = 0;     // no timeout -- check for buffers, bail if none
 
-//            ByteBuffer[] encoderOutputBuffers = mEncoder.getOutputBuffers();
+            int inputBufIndex = mEncoder.dequeueInputBuffer(TIMEOUT_USEC);
+            if (inputBufIndex >= 0) {
+                Log.d(TAG, "drainEncoder, inputBuffer");
+                Image image = mimageStreamReader.acquireNextImage();
+                ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+                byte[] input = new byte[buffer.remaining()];
+                buffer.get(input);
+//                byte[] input = getNV21(image.getWidth(), image.getHeight(), getBitmap(image));
+                final ByteBuffer inputBuffer = mEncoder.getInputBuffer(inputBufIndex);
+                inputBuffer.clear();
+                inputBuffer.put(input);
+                mEncoder.queueInputBuffer(inputBufIndex, 0, input.length, mFrameNum, 0);
+                image.close();
+            }
+
             while (true) {
+                Log.d(TAG, "drainEncoder, outputBuffer");
                 int encoderStatus = mEncoder.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     // no output available yet
@@ -410,9 +434,15 @@ public class CircularEncoder {
                 Log.w(TAG, "muxer failed", ioe);
                 result = 2;
             } finally {
+                if (mEncoder != null) {
+                    mEncoder.stop();
+                    mEncoder.release();
+                    mEncoder = null;
+                }
                 if (muxer != null) {
                     muxer.stop();
                     muxer.release();
+                    muxer = null;
                 }
             }
 
@@ -440,6 +470,7 @@ public class CircularEncoder {
             public static final int MSG_FRAME_AVAILABLE_SOON = 1;
             public static final int MSG_SAVE_VIDEO = 2;
             public static final int MSG_SHUTDOWN = 3;
+            private Boolean saveVideoInProgress = false;
 
             // This shouldn't need to be a weak ref, since we'll go away when the Looper quits,
             // but no real harm in it.
@@ -468,9 +499,12 @@ public class CircularEncoder {
 
                 switch (what) {
                     case MSG_FRAME_AVAILABLE_SOON:
-                        encoderThread.frameAvailableSoon();
+                        if (!saveVideoInProgress) {
+                            encoderThread.frameAvailableSoon();
+                        }
                         break;
                     case MSG_SAVE_VIDEO:
+                        saveVideoInProgress = true;
                         encoderThread.saveVideo((File) msg.obj);
                         break;
                     case MSG_SHUTDOWN:
@@ -480,6 +514,65 @@ public class CircularEncoder {
                         throw new RuntimeException("unknown message " + what);
                 }
             }
+        }
+
+        private Bitmap getBitmap(Image image) {
+            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[buffer.capacity()];
+            buffer.get(bytes);
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+        }
+
+        private byte[] getNV21(int inputWidth, int inputHeight, Bitmap scaled) {
+
+            int[] argb = new int[inputWidth * inputHeight];
+
+            scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);
+
+            byte[] yuv = new byte[inputWidth * inputHeight * 3 / 2];
+            encodeYUV420SP(yuv, argb, inputWidth, inputHeight);
+
+            scaled.recycle();
+
+            return yuv;
+        }
+
+        private void encodeYUV420SP(byte[] yuv420sp, int[] argb, int width, int height) {
+            final int frameSize = width * height;
+
+            int yIndex = 0;
+            int uvIndex = frameSize;
+
+            int a, R, G, B, Y, U, V;
+            int index = 0;
+            for (int j = 0; j < height; j++) {
+                for (int i = 0; i < width; i++) {
+
+                    a = (argb[index] & 0xff000000) >> 24; // a is not used obviously
+                    R = (argb[index] & 0xff0000) >> 16;
+                    G = (argb[index] & 0xff00) >> 8;
+                    B = (argb[index] & 0xff) >> 0;
+
+
+                    Y = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;
+                    U = ((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128;
+                    V = ((112 * R - 94 * G - 18 * B + 128) >> 8) + 128;
+
+
+                    yuv420sp[yIndex++] = (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
+                    if (j % 2 == 0 && index % 2 == 0) {
+                        yuv420sp[uvIndex++] = (byte) ((U < 0) ? 0 : ((U > 255) ? 255 : U));
+                        yuv420sp[uvIndex++] = (byte) ((V < 0) ? 0 : ((V > 255) ? 255 : V));
+
+                    }
+
+                    index++;
+                }
+            }
+        }
+
+        private long computePresentationTime(long frameIndex) {
+            return 132 + frameIndex;
         }
     }
 }
