@@ -6,23 +6,13 @@ package io.flutter.plugins.camera;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.ImageFormat;
-import android.graphics.Matrix;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
-import android.media.Image;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ReadOnlyBufferException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -140,132 +130,5 @@ public final class CameraUtils {
       cameras.add(details);
     }
     return cameras;
-  }
-
-  public static Bitmap getBitmap(Image image) {
-    ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-    byte[] bytes = new byte[buffer.capacity()];
-    buffer.get(bytes);
-//    byte[] bytes = YUV_420_888toNV21(image);
-//    YuvImage yuvimage = new YuvImage(bytes, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
-//    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-//    yuvimage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, outputStream);
-//    bytes = outputStream.toByteArray();
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-  }
-
-  public static Bitmap getBitmapFromRawImage(Image image) {
-    Bitmap bitmap = Bitmap.createBitmap(image.getWidth(), image.getHeight(), Bitmap.Config.ARGB_8888);
-    bitmap.copyPixelsFromBuffer(image.getPlanes()[0].getBuffer());
-    return bitmap;
-  }
-
-  public static Bitmap rotateBitmap(Bitmap source, float angle)
-  {
-    Matrix matrix = new Matrix();
-    matrix.setRotate(angle,0,0);
-    return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
-  }
-
-  public static Bitmap getBitmapFromNV21(byte[] data) {
-    YuvImage yuvimage = new YuvImage(data, ImageFormat.NV21, 1920, 1080, null);
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    yuvimage.compressToJpeg(new Rect(0, 0, 1920, 1080), 100, outputStream);
-    byte[] bytes = outputStream.toByteArray();
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-  }
-
-  public static Bitmap getBitmapFromYuvImage(YuvImage image) {
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, outputStream);
-    byte[] bytes = outputStream.toByteArray();
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-  }
-
-  public static byte[] getNV21(Image image) {
-    return YUV_420_888toNV21(image);
-  }
-
-  public static YuvImage getYuvImage(Image image) {
-    byte[] bytes = YUV_420_888toNV21(image);
-    return new YuvImage(bytes, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
-  }
-
-  private static byte[] YUV_420_888toNV21(Image image) {
-
-    int width = image.getWidth();
-    int height = image.getHeight();
-    int ySize = width*height;
-    int uvSize = width*height/4;
-
-    byte[] nv21 = new byte[ySize + uvSize*2];
-
-    ByteBuffer yBuffer = image.getPlanes()[0].getBuffer(); // Y
-    ByteBuffer uBuffer = image.getPlanes()[1].getBuffer(); // U
-    ByteBuffer vBuffer = image.getPlanes()[2].getBuffer(); // V
-
-    int rowStride = image.getPlanes()[0].getRowStride();
-    assert(image.getPlanes()[0].getPixelStride() == 1);
-
-    int pos = 0;
-
-    if (rowStride == width) { // likely
-      yBuffer.get(nv21, 0, ySize);
-      pos += ySize;
-    }
-    else {
-      int yBufferPos = -rowStride; // not an actual position
-      for (; pos<ySize; pos+=width) {
-        yBufferPos += rowStride;
-        yBuffer.position(yBufferPos);
-        yBuffer.get(nv21, pos, width);
-      }
-    }
-
-    rowStride = image.getPlanes()[2].getRowStride();
-    int pixelStride = image.getPlanes()[2].getPixelStride();
-
-    assert(rowStride == image.getPlanes()[1].getRowStride());
-    assert(pixelStride == image.getPlanes()[1].getPixelStride());
-
-    if (pixelStride == 2 && rowStride == width && uBuffer.get(0) == vBuffer.get(1)) {
-      // maybe V an U planes overlap as per NV21, which means vBuffer[1] is alias of uBuffer[0]
-      byte savePixel = vBuffer.get(1);
-      try {
-        vBuffer.put(1, (byte)~savePixel);
-        if (uBuffer.get(0) == (byte)~savePixel) {
-          vBuffer.put(1, savePixel);
-          vBuffer.position(0);
-          uBuffer.position(0);
-          vBuffer.get(nv21, ySize, 1);
-          uBuffer.get(nv21, ySize + 1, uBuffer.remaining());
-
-          return nv21; // shortcut
-        }
-      }
-      catch (ReadOnlyBufferException ex) {
-        // unfortunately, we cannot check if vBuffer and uBuffer overlap
-      }
-
-      // unfortunately, the check failed. We must save U and V pixel by pixel
-      vBuffer.put(1, savePixel);
-    }
-
-    // other optimizations could check if (pixelStride == 1) or (pixelStride == 2),
-    // but performance gain would be less significant
-
-    for (int row=0; row<height/2; row++) {
-      for (int col=0; col<width/2; col++) {
-        int vuPos = col*pixelStride + row*rowStride;
-        nv21[pos++] = vBuffer.get(vuPos);
-        nv21[pos++] = uBuffer.get(vuPos);
-      }
-    }
-
-    return nv21;
-  }
-
-  public static Bitmap getScaledBitmap(Bitmap bitmap, int dstWidth, int dstHeight) {
-    return Bitmap.createScaledBitmap(bitmap, dstWidth, dstHeight, false);
   }
 }

@@ -8,7 +8,6 @@ import androidx.annotation.NonNull;
 
 import java.io.File;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Queue;
 
 public class LivePhotoSaver implements Runnable {
@@ -39,8 +38,7 @@ public class LivePhotoSaver implements Runnable {
 
         bitmapToVideoEncoder.startEncoding(width, height, file);
         for (Bitmap bitmap : bitmaps) {
-            bitmapToVideoEncoder.queueFrame(
-                    CameraUtils.getScaledBitmap(bitmap, width, height));
+            bitmapToVideoEncoder.queueFrame(bitmap);
         }
         bitmapToVideoEncoder.stopEncoding();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

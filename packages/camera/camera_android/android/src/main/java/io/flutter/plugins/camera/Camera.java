@@ -253,9 +253,6 @@ class Camera
       mediaRecorder.release();
     }
 
-    final PlatformChannel.DeviceOrientation lockedOrientation =
-        cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
-
     MediaRecorderBuilder mediaRecorderBuilder;
 
     // TODO(camsim99): Revert changes that allow legacy code to be used when recordingProfile is null
@@ -270,10 +267,7 @@ class Camera
     mediaRecorder =
         mediaRecorderBuilder
             .setEnableAudio(enableAudio)
-            .setMediaOrientation(
-                lockedOrientation == null
-                    ? getDeviceOrientationManager().getVideoOrientation()
-                    : getDeviceOrientationManager().getVideoOrientation(lockedOrientation))
+            .setMediaOrientation(getVideoOrientation())
             .build();
   }
 
@@ -338,7 +332,7 @@ class Camera
         }
 
         Image image = reader.acquireNextImage();
-        Bitmap bitmap = CameraUtils.getBitmap(image);
+        Bitmap bitmap = ImageUtils.getBitmap(image);
         if (livePhotoQueue.isAtFullCapacity()) {
           Bitmap oldBitmap = livePhotoQueue.remove();
           oldBitmap.recycle();
@@ -360,29 +354,6 @@ class Camera
 
             previewSurface.unlockCanvasAndPost(canvas);
           }
-        }
-        if (needMakeCapture) {
-//          backgroundHandler.post(new ImageSaver(
-//                  CameraUtils.rotateBitmap(bitmap, getOrientation()),
-//                  captureFile,
-//                  new ImageSaver.Callback() {
-//            @Override
-//            public void onComplete(String absolutePath) {
-//              captureFileSaveComplete = true;
-//              if (livePhotoFileSaveComplete) {
-//                List<String> files = new ArrayList<>();
-//                files.add(absolutePath);
-//                files.add(livePhotoOutputFile.getAbsolutePath());
-//                dartMessenger.finish(flutterResult, files);
-//              }
-//            }
-//
-//            @Override
-//            public void onError(String errorCode, String errorMessage) {
-//              dartMessenger.error(flutterResult, errorCode, errorMessage, null);
-//            }
-//          }));
-//          cameraCaptureCallback.setCameraState(CameraState.STATE_PREVIEW);
         }
         image.close();
       }, backgroundHandler);
@@ -480,11 +451,13 @@ class Camera
     surfaceTexture.setDefaultBufferSize(
         resolutionFeature.getPreviewSize().getWidth(),
         resolutionFeature.getPreviewSize().getHeight());
-//    Surface flutterSurface = new Surface(surfaceTexture);
-//    previewRequestBuilder.addTarget(flutterSurface);
     previewSurface = new Surface(surfaceTexture);
 
-    previewRequestBuilder.addTarget(livePhotoImageStreamReader.getSurface());
+    if (enableLivePhoto) {
+      previewRequestBuilder.addTarget(livePhotoImageStreamReader.getSurface());
+    } else {
+      previewRequestBuilder.addTarget(previewSurface);
+    }
 
     List<Surface> remainingSurfaces = Arrays.asList(surfaces);
     if (templateType != CameraDevice.TEMPLATE_PREVIEW) {
@@ -539,8 +512,11 @@ class Camera
     if (VERSION.SDK_INT >= VERSION_CODES.P) {
       // Collect all surfaces to render to.
       List<OutputConfiguration> configs = new ArrayList<>();
-//      configs.add(new OutputConfiguration(flutterSurface));
-      configs.add(new OutputConfiguration(livePhotoImageStreamReader.getSurface()));
+      if (enableLivePhoto) {
+        configs.add(new OutputConfiguration(livePhotoImageStreamReader.getSurface()));
+      } else {
+        configs.add(new OutputConfiguration(previewSurface));
+      }
       for (Surface surface : remainingSurfaces) {
         configs.add(new OutputConfiguration(surface));
       }
@@ -548,8 +524,11 @@ class Camera
     } else {
       // Collect all surfaces to render to.
       List<Surface> surfaceList = new ArrayList<>();
-//      surfaceList.add(flutterSurface);
-      surfaceList.add(livePhotoImageStreamReader.getSurface());
+      if (enableLivePhoto) {
+        surfaceList.add(livePhotoImageStreamReader.getSurface());
+      } else {
+        surfaceList.add(previewSurface);
+      }
       surfaceList.addAll(remainingSurfaces);
       createCaptureSession(surfaceList, callback);
     }
@@ -628,11 +607,12 @@ class Camera
     }
     if (enableLivePhoto) {
       surfaces.add(pictureImageReader.getSurface());
-//      surfaces.add(livePhotoImageStreamReader.getSurface());
     }
 
     createCaptureSession(
-        CameraDevice.TEMPLATE_PREVIEW, successCallback, surfaces.toArray(new Surface[0]));
+            enableLivePhoto ? CameraDevice.TEMPLATE_PREVIEW : CameraDevice.TEMPLATE_RECORD,
+            successCallback,
+            surfaces.toArray(new Surface[0]));
   }
 
   public void takePicture(@NonNull final Result result) {
@@ -719,11 +699,7 @@ class Camera
     if (enableLivePhoto) {
       needMakeCapture = true;
 
-      final PlatformChannel.DeviceOrientation lockedOrientation =
-              cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
-
       ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
-      resolutionFeature.setValue(ResolutionPreset.high);
 
       int frameRate;
       EncoderProfiles recordingProfile = getRecordingProfile();
@@ -737,9 +713,7 @@ class Camera
       backgroundHandler.post(new LivePhotoSaver(
               livePhotoQueue,
               livePhotoOutputFile,
-              lockedOrientation == null
-                      ? getDeviceOrientationManager().getVideoOrientation()
-                      : getDeviceOrientationManager().getVideoOrientation(lockedOrientation),
+              getVideoOrientation(),
               resolutionFeature.getPreviewSize().getWidth(),
               resolutionFeature.getPreviewSize().getHeight(),
               frameRate,
@@ -754,9 +728,6 @@ class Camera
           dartMessenger.error(flutterResult, errorCode, errorMessage, null);
         }
       }));
-//      Image image = pictureImageReader.acquireLatestImage();
-//      Log.d(TAG, String.valueOf(image.getWidth()));
-//      return;
     }
 
     // This is the CaptureRequest.Builder that is used to take a picture.
@@ -777,16 +748,11 @@ class Camera
     updateBuilderSettings(stillBuilder);
 
     stillBuilder.addTarget(pictureImageReader.getSurface());
-//    stillBuilder.removeTarget(livePhotoImageStreamReader.getSurface());
 
     // Orientation.
-    final PlatformChannel.DeviceOrientation lockedOrientation =
-        cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
     stillBuilder.set(
         CaptureRequest.JPEG_ORIENTATION,
-        lockedOrientation == null
-            ? getDeviceOrientationManager().getPhotoOrientation()
-            : getDeviceOrientationManager().getPhotoOrientation(lockedOrientation));
+        getPhotoOrientation());
 
     CameraCaptureSession.CaptureCallback captureCallback =
         new CameraCaptureSession.CaptureCallback() {
@@ -1156,13 +1122,22 @@ class Camera
     return cameraFeatures.getSensorOrientation().getDeviceOrientationManager();
   }
 
-  int getOrientation() {
+  int getVideoOrientation() {
     final PlatformChannel.DeviceOrientation lockedOrientation =
             cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
 
     return lockedOrientation == null
             ? getDeviceOrientationManager().getVideoOrientation()
             : getDeviceOrientationManager().getVideoOrientation(lockedOrientation);
+  }
+
+  int getPhotoOrientation() {
+    final PlatformChannel.DeviceOrientation lockedOrientation =
+            cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
+
+    return lockedOrientation == null
+            ? getDeviceOrientationManager().getPhotoOrientation()
+            : getDeviceOrientationManager().getPhotoOrientation(lockedOrientation);
   }
 
   /**
@@ -1253,6 +1228,7 @@ class Camera
             // Use acquireNextImage since image reader is only for one image.
             reader.acquireNextImage(),
             captureFile,
+            getPhotoOrientation(),
             new ImageSaver.Callback() {
               @Override
               public void onComplete(String absolutePath) {
