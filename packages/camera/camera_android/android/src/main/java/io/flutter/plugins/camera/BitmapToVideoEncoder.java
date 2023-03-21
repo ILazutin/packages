@@ -6,6 +6,7 @@ import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -16,6 +17,7 @@ import androidx.annotation.VisibleForTesting;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -41,7 +43,8 @@ public class BitmapToVideoEncoder {
     private static int mWidth;
     private static int mHeight;
     private static final int BIT_RATE = 16000000;
-    private static final int FRAME_RATE = 30; // Frames per second
+    private final int frameRate; // Frames per second
+    private final int orientation;
 
     private static final int I_FRAME_INTERVAL = 1;
 
@@ -54,8 +57,10 @@ public class BitmapToVideoEncoder {
         void onEncodingComplete(File outputFile);
     }
 
-    public BitmapToVideoEncoder(IBitmapToVideoEncoderCallback callback) {
+    public BitmapToVideoEncoder(int frameRate, int orientation, IBitmapToVideoEncoderCallback callback) {
         mCallback = callback;
+        this.frameRate = frameRate;
+        this.orientation = orientation;
         startBackgroundThread();
     }
 
@@ -102,13 +107,17 @@ public class BitmapToVideoEncoder {
 
         MediaFormat mediaFormat = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
         mediaFormat.setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE);
-        mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
+        mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
         mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            mediaFormat.setInteger(MediaFormat.KEY_ROTATION, orientation);
+        }
         mediaCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mediaCodec.start();
         try {
             mediaMuxer = new MediaMuxer(outputFileString, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            mediaMuxer.setOrientationHint(orientation);
         } catch (IOException e) {
             Log.e(TAG,"MediaMuxer creation failed. " + e.getMessage());
             return;
@@ -191,11 +200,14 @@ public class BitmapToVideoEncoder {
 
             if (bitmap == null) continue;
 
-            byte[] byteConvertFrame = getNV21(bitmap.getWidth(), bitmap.getHeight(), bitmap);
+            final Bitmap rotatedBitmap = bitmap; //CameraUtils.rotateBitmap(bitmap, orientation);
+//            final Bitmap rotatedBitmap = CameraUtils.rotateBitmap(bitmap, orientation);
+//            bitmap.recycle();
+            byte[] byteConvertFrame = getNV21(rotatedBitmap.getWidth(), rotatedBitmap.getHeight(), rotatedBitmap);
 
             long TIMEOUT_USEC = 500000;
             int inputBufIndex = mediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
-            long ptsUsec = computePresentationTime(mGenerateIndex, FRAME_RATE);
+            long ptsUsec = computePresentationTime(mGenerateIndex, frameRate);
             if (inputBufIndex >= 0) {
                 final ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufIndex);
                 inputBuffer.clear();
@@ -203,6 +215,7 @@ public class BitmapToVideoEncoder {
                 mediaCodec.queueInputBuffer(inputBufIndex, 0, byteConvertFrame.length, ptsUsec, 0);
                 mGenerateIndex++;
             }
+//            rotatedBitmap.recycle();
             MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
             int encoderStatus = mediaCodec.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
             if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
@@ -230,9 +243,7 @@ public class BitmapToVideoEncoder {
 
         release();
 
-        if (mAbort) {
-            mOutputFile.delete();
-        } else {
+        if (!mAbort) {
             mCallback.onEncodingComplete(mOutputFile);
         }
     }
@@ -243,6 +254,9 @@ public class BitmapToVideoEncoder {
             mediaCodec.release();
             mediaCodec = null;
             Log.d(TAG,"RELEASE CODEC");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d("LivePhoto.ENCODER.STOP", LocalDateTime.now().toString());
+            }
         }
         if (mediaMuxer != null) {
             mediaMuxer.stop();
@@ -254,15 +268,14 @@ public class BitmapToVideoEncoder {
 
     private MediaCodecInfo selectCodec(String mimeType) {
         MediaCodecList codecs = new MediaCodecList(MediaCodecList.ALL_CODECS);
-        MediaCodecInfo[] codecInfos = codecs.getCodecInfos();
-        for (MediaCodecInfo codecInfo : codecInfos) {
-//            MediaCodecInfo codecInfo = MediaCodecList.getCodecInfoAt(i);
+        MediaCodecInfo[] codecInfoList = codecs.getCodecInfos();
+        for (MediaCodecInfo codecInfo : codecInfoList) {
             if (!codecInfo.isEncoder()) {
                 continue;
             }
             String[] types = codecInfo.getSupportedTypes();
-            for (int j = 0; j < types.length; j++) {
-                if (types[j].equalsIgnoreCase(mimeType)) {
+            for (String type : types) {
+                if (type.equalsIgnoreCase(mimeType)) {
                     return codecInfo;
                 }
             }
@@ -284,17 +297,8 @@ public class BitmapToVideoEncoder {
     }
 
     private static boolean isRecognizedFormat(int colorFormat) {
-        switch (colorFormat) {
-            // these are the formats we know how to handle for
-            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible:
-//            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar:
-//            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar:
-//            case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar:
-//            case MediaCodecInfo.CodecCapabilities.COLOR_TI_FormatYUV420PackedSemiPlanar:
-                return true;
-            default:
-                return false;
-        }
+        // these are the formats we know how to handle for
+        return colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible;
     }
 
     private byte[] getNV21(int inputWidth, int inputHeight, Bitmap scaled) {

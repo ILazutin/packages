@@ -9,6 +9,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
@@ -142,16 +143,28 @@ public final class CameraUtils {
   }
 
   public static Bitmap getBitmap(Image image) {
-//    ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-//    byte[] bytes = new byte[buffer.capacity()];
-//    buffer.get(bytes);
+    ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+    byte[] bytes = new byte[buffer.capacity()];
+    buffer.get(bytes);
 //    byte[] bytes = YUV_420_888toNV21(image);
-    byte[] bytes = YUV_420_888toNV21(image);
-    YuvImage yuvimage = new YuvImage(bytes, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    yuvimage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, outputStream);
-    bytes = outputStream.toByteArray();
+//    YuvImage yuvimage = new YuvImage(bytes, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
+//    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+//    yuvimage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, outputStream);
+//    bytes = outputStream.toByteArray();
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+  }
+
+  public static Bitmap getBitmapFromRawImage(Image image) {
+    Bitmap bitmap = Bitmap.createBitmap(image.getWidth(), image.getHeight(), Bitmap.Config.ARGB_8888);
+    bitmap.copyPixelsFromBuffer(image.getPlanes()[0].getBuffer());
+    return bitmap;
+  }
+
+  public static Bitmap rotateBitmap(Bitmap source, float angle)
+  {
+    Matrix matrix = new Matrix();
+    matrix.setRotate(angle,0,0);
+    return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
   }
 
   public static Bitmap getBitmapFromNV21(byte[] data) {
@@ -164,7 +177,7 @@ public final class CameraUtils {
 
   public static Bitmap getBitmapFromYuvImage(YuvImage image) {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    image.compressToJpeg(new Rect(0, 0, 1920, 1080), 100, outputStream);
+    image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, outputStream);
     byte[] bytes = outputStream.toByteArray();
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
   }
@@ -250,5 +263,9 @@ public final class CameraUtils {
     }
 
     return nv21;
+  }
+
+  public static Bitmap getScaledBitmap(Bitmap bitmap, int dstWidth, int dstHeight) {
+    return Bitmap.createScaledBitmap(bitmap, dstWidth, dstHeight, false);
   }
 }

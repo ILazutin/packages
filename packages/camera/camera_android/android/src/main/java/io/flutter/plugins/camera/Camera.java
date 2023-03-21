@@ -9,9 +9,10 @@ import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
-import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
@@ -32,11 +33,6 @@ import android.os.Build.VERSION_CODES;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
-import android.os.Message;
-//import android.renderscript.Allocation;
-//import android.renderscript.Element;
-//import android.renderscript.RenderScript;
-//import android.renderscript.ScriptIntrinsicYuvToRGB;
 import android.util.Log;
 import android.util.Size;
 import android.view.Display;
@@ -72,7 +68,6 @@ import io.flutter.plugins.camera.types.CaptureTimeoutsWrapper;
 import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -82,7 +77,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
-import java.util.Queue;
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 
 @FunctionalInterface
@@ -114,12 +108,6 @@ class Camera
   private final boolean enableAudio;
   private final boolean enableLivePhoto;
   private final int livePhotoMaxDuration;
-  private CircularEncoder mCircEncoder;
-//  private Allocation aIn;
-//  private Allocation aOut;
-//  private RenderScript rs;
-//  private ScriptIntrinsicYuvToRGB yuvToRgbIntrinsic;
-//  private Bitmap bmpout;
   private final Context applicationContext;
   private final DartMessenger dartMessenger;
   private final CameraProperties cameraProperties;
@@ -148,11 +136,12 @@ class Camera
 
   private File captureFile;
   private File livePhotoOutputFile;
-  private Boolean captureFileSaveComplete;
-  private Boolean livePhotoFileSaveComplete;
-  private LivePhotoHandler livePhotoHandler;
+  private Boolean needMakeCapture = false;
+  private Boolean captureFileSaveComplete = false;
+  private Boolean livePhotoFileSaveComplete = false;
+  private Surface previewSurface;
   private ImageReader livePhotoImageStreamReader;
-  private Queue<YuvImage> livePhotoQueue;
+  private CircularFifoQueue<Bitmap> livePhotoQueue;
 
   /** Holds the current capture timeouts */
   private CaptureTimeoutsWrapper captureTimeouts;
@@ -308,7 +297,7 @@ class Camera
         ImageReader.newInstance(
             resolutionFeature.getCaptureSize().getWidth(),
             resolutionFeature.getCaptureSize().getHeight(),
-            ImageFormat.JPEG,
+            enableLivePhoto ? ImageFormat.YUV_420_888 : ImageFormat.JPEG,
             1);
 
     // For image streaming, use the provided image format or fall back to YUV420.
@@ -324,62 +313,79 @@ class Camera
             imageFormat,
             1);
 
-//    rs = RenderScript.create(this.activity);
-//    yuvToRgbIntrinsic = ScriptIntrinsicYuvToRGB.create(rs, Element.U8_4(rs));
-//
-//    aIn = Allocation.createSized(rs, Element.U8(rs), 1080*1920*3/2); // what the f**k ?  This is 12 bit per pixel, giving the length of the camera data byte array !
-//
-//    bmpout = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888); // you will need this bitmap for output anyway
-//
-//    aOut = Allocation.createFromBitmap(rs, bmpout);  // tada !
-//
-//// and set the script´s input
-//    yuvToRgbIntrinsic.setInput(aIn);
-
     if (enableLivePhoto) {
-//      try {
-//        livePhotoHandler = new LivePhotoHandler(Looper.getMainLooper());
-//        livePhotoHandler.setCamera(this);
-
         livePhotoImageStreamReader = ImageReader.newInstance(
-                1920,
-                1080,
-                ImageFormat.YUV_420_888, //TODO читать в JPEG, для видео конвертировать в разрешение видеоформата Bitmap.createScaledBitmap
+                resolutionFeature.getPreviewSize().getWidth(),
+                resolutionFeature.getPreviewSize().getHeight(),
+                ImageFormat.JPEG,
                 1);
 
-//        mCircEncoder = new CircularEncoder(
-////                resolutionFeature.getPreviewSize().getWidth(),
-////                resolutionFeature.getPreviewSize().getHeight(),
-//                1920,
-//                1080,
-//                60000,
-//                30000 / 1000,
-//                livePhotoMaxDuration / 1000,
-//                livePhotoHandler,
-//                livePhotoImageStreamReader
-//                );
-//      } catch (IOException ioe) {
-//        throw new RuntimeException(ioe);
-//      }
+      int frameRate = 0;
+      EncoderProfiles recordingProfile = getRecordingProfile();
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
+        frameRate = recordingProfile.getVideoProfiles().get(0).getFrameRate();
+      } else {
+        CamcorderProfile profile = getRecordingProfileLegacy();
+        frameRate = profile.videoFrameRate;
+      }
 
-      livePhotoQueue = new CircularFifoQueue<YuvImage>(livePhotoMaxDuration / 1000 * 30);
+      livePhotoQueue = new CircularFifoQueue<Bitmap>(livePhotoMaxDuration / 1000 * frameRate);
       livePhotoImageStreamReader.setOnImageAvailableListener(reader -> {
-                Log.d(TAG, "livePhotoImageStreamReader.setOnImageAvailableListener");
 
-                Image image = reader.acquireNextImage();
-                livePhotoQueue.add(CameraUtils.getYuvImage(image));
-//                aIn.copyFromUnchecked(CameraUtils.getNV21(image));  // or aIn.copyFromUnchecked(data);  // which is faster and safe for camera data
+        if (needMakeCapture) {
+          livePhotoImageStreamReader.setOnImageAvailableListener(null, backgroundHandler);
+          return;
+        }
+
+        Image image = reader.acquireNextImage();
+        Bitmap bitmap = CameraUtils.getBitmap(image);
+        if (livePhotoQueue.isAtFullCapacity()) {
+          Bitmap oldBitmap = livePhotoQueue.remove();
+          oldBitmap.recycle();
+        }
+        livePhotoQueue.add(bitmap);
+        if (previewSurface.isValid()) {
+          flutterTexture.surfaceTexture().setDefaultBufferSize(image.getHeight(), image.getWidth());
+          Canvas canvas = previewSurface.lockCanvas(null);
+          if (canvas != null) {
+            Matrix matrix = new Matrix();
+            int rotation = 90;
+            float px = canvas.getWidth()/2;
+            float py = canvas.getHeight()/2;
+            matrix.postTranslate(-bitmap.getWidth()/2, -bitmap.getHeight()/2);
+            matrix.postRotate(rotation);
+            matrix.postTranslate(px, py);
+            matrix.postScale(bitmap.getWidth()/bitmap.getHeight(), 1);
+            canvas.drawBitmap(bitmap, matrix, null);
+
+            previewSurface.unlockCanvasAndPost(canvas);
+          }
+        }
+        if (needMakeCapture) {
+//          backgroundHandler.post(new ImageSaver(
+//                  CameraUtils.rotateBitmap(bitmap, getOrientation()),
+//                  captureFile,
+//                  new ImageSaver.Callback() {
+//            @Override
+//            public void onComplete(String absolutePath) {
+//              captureFileSaveComplete = true;
+//              if (livePhotoFileSaveComplete) {
+//                List<String> files = new ArrayList<>();
+//                files.add(absolutePath);
+//                files.add(livePhotoOutputFile.getAbsolutePath());
+//                dartMessenger.finish(flutterResult, files);
+//              }
+//            }
 //
-//                yuvToRgbIntrinsic.forEach(aOut);  // execute the script
-//
-//                aOut.copyTo(bmpout);  // copy result from aOut to bmpout
-//                livePhotoQueue.add(bmpout);
-                image.close();
-//                if (mCircEncoder != null) {
-//                  mCircEncoder.frameAvailableSoon();
-//                }
-              },
-              backgroundHandler);
+//            @Override
+//            public void onError(String errorCode, String errorMessage) {
+//              dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+//            }
+//          }));
+//          cameraCaptureCallback.setCameraState(CameraState.STATE_PREVIEW);
+        }
+        image.close();
+      }, backgroundHandler);
     }
 
     // Open the camera.
@@ -474,8 +480,11 @@ class Camera
     surfaceTexture.setDefaultBufferSize(
         resolutionFeature.getPreviewSize().getWidth(),
         resolutionFeature.getPreviewSize().getHeight());
-    Surface flutterSurface = new Surface(surfaceTexture);
-    previewRequestBuilder.addTarget(flutterSurface);
+//    Surface flutterSurface = new Surface(surfaceTexture);
+//    previewRequestBuilder.addTarget(flutterSurface);
+    previewSurface = new Surface(surfaceTexture);
+
+    previewRequestBuilder.addTarget(livePhotoImageStreamReader.getSurface());
 
     List<Surface> remainingSurfaces = Arrays.asList(surfaces);
     if (templateType != CameraDevice.TEMPLATE_PREVIEW) {
@@ -484,27 +493,6 @@ class Camera
         previewRequestBuilder.addTarget(surface);
       }
     }
-
-//    if (enableLivePhoto) {
-//      try {
-//        livePhotoHandler = new LivePhotoHandler(Looper.getMainLooper());
-//        livePhotoHandler.setCamera(this);
-//
-//        mCircEncoder = new CircularEncoder(
-////                resolutionFeature.getCaptureSize().getWidth(),
-////                resolutionFeature.getCaptureSize().getHeight(),
-//                1920,
-//                1080,
-//                6000000,
-//                30000 / 1000,
-//                livePhotoMaxDuration / 1000,
-//                livePhotoHandler);
-//        Surface circSurface = mCircEncoder.getInputSurface();
-//        previewRequestBuilder.addTarget(circSurface);
-//      } catch (IOException ioe) {
-//        throw new RuntimeException(ioe);
-//      }
-//    }
 
     // Update camera regions.
     Size cameraBoundaries =
@@ -551,22 +539,18 @@ class Camera
     if (VERSION.SDK_INT >= VERSION_CODES.P) {
       // Collect all surfaces to render to.
       List<OutputConfiguration> configs = new ArrayList<>();
-      configs.add(new OutputConfiguration(flutterSurface));
+//      configs.add(new OutputConfiguration(flutterSurface));
+      configs.add(new OutputConfiguration(livePhotoImageStreamReader.getSurface()));
       for (Surface surface : remainingSurfaces) {
         configs.add(new OutputConfiguration(surface));
       }
-//      if (enableLivePhoto && mCircEncoder != null) {
-//        configs.add(new OutputConfiguration(mCircEncoder.getInputSurface()));
-//      }
       createCaptureSessionWithSessionConfig(configs, callback);
     } else {
       // Collect all surfaces to render to.
       List<Surface> surfaceList = new ArrayList<>();
-      surfaceList.add(flutterSurface);
+//      surfaceList.add(flutterSurface);
+      surfaceList.add(livePhotoImageStreamReader.getSurface());
       surfaceList.addAll(remainingSurfaces);
-//      if (enableLivePhoto && mCircEncoder != null) {
-//        surfaceList.add(mCircEncoder.getInputSurface());
-//      }
       createCaptureSession(surfaceList, callback);
     }
   }
@@ -574,10 +558,9 @@ class Camera
   void livePhotoFileSaveComplete(int status) {
     Log.d(TAG, "fileSaveComplete " + status);
     livePhotoFileSaveComplete = true;
-    if (status == 0) {
-//      mCircEncoder.shutdown();
+    if (status == 0 && captureFileSaveComplete) {
       List<String> files = new ArrayList<>();
-//      files.add(captureFile.getAbsolutePath());
+      files.add(captureFile.getAbsolutePath());
       files.add(livePhotoOutputFile.getAbsolutePath());
       dartMessenger.finish(flutterResult, files);
     }
@@ -636,23 +619,20 @@ class Camera
   private void startCapture(boolean record, boolean stream) throws CameraAccessException {
     List<Surface> surfaces = new ArrayList<>();
     Runnable successCallback = null;
-//    int template = CameraDevice.TEMPLATE_RECORD;
     if (record) {
       surfaces.add(mediaRecorder.getSurface());
       successCallback = () -> mediaRecorder.start();
-    } else {
-//      surfaces.add(pictureImageReader.getSurface());
-//      template = CameraDevice.TEMPLATE_PREVIEW;
     }
     if (stream && !enableLivePhoto) {
       surfaces.add(imageStreamReader.getSurface());
     }
     if (enableLivePhoto) {
-      surfaces.add(livePhotoImageStreamReader.getSurface());
+      surfaces.add(pictureImageReader.getSurface());
+//      surfaces.add(livePhotoImageStreamReader.getSurface());
     }
 
     createCaptureSession(
-        CameraDevice.TEMPLATE_RECORD, successCallback, surfaces.toArray(new Surface[0]));
+        CameraDevice.TEMPLATE_PREVIEW, successCallback, surfaces.toArray(new Surface[0]));
   }
 
   public void takePicture(@NonNull final Result result) {
@@ -735,8 +715,35 @@ class Camera
     if (cameraDevice == null) {
       return;
     }
+
     if (enableLivePhoto) {
-      backgroundHandler.post(new LivePhotoSaver(livePhotoQueue, livePhotoOutputFile, new LivePhotoSaver.Callback() {
+      needMakeCapture = true;
+
+      final PlatformChannel.DeviceOrientation lockedOrientation =
+              cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
+
+      ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
+      resolutionFeature.setValue(ResolutionPreset.high);
+
+      int frameRate;
+      EncoderProfiles recordingProfile = getRecordingProfile();
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
+        frameRate = recordingProfile.getVideoProfiles().get(0).getFrameRate();
+      } else {
+        CamcorderProfile profile = getRecordingProfileLegacy();
+        frameRate = profile.videoFrameRate;
+      }
+
+      backgroundHandler.post(new LivePhotoSaver(
+              livePhotoQueue,
+              livePhotoOutputFile,
+              lockedOrientation == null
+                      ? getDeviceOrientationManager().getVideoOrientation()
+                      : getDeviceOrientationManager().getVideoOrientation(lockedOrientation),
+              resolutionFeature.getPreviewSize().getWidth(),
+              resolutionFeature.getPreviewSize().getHeight(),
+              frameRate,
+              new LivePhotoSaver.Callback() {
         @Override
         public void onComplete(int status) {
           livePhotoFileSaveComplete(status);
@@ -747,9 +754,11 @@ class Camera
           dartMessenger.error(flutterResult, errorCode, errorMessage, null);
         }
       }));
-//      mCircEncoder.saveVideo(livePhotoOutputFile);
-      return;
+//      Image image = pictureImageReader.acquireLatestImage();
+//      Log.d(TAG, String.valueOf(image.getWidth()));
+//      return;
     }
+
     // This is the CaptureRequest.Builder that is used to take a picture.
     CaptureRequest.Builder stillBuilder;
     try {
@@ -758,11 +767,6 @@ class Camera
       dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
       return;
     }
-//    if (enableLivePhoto) {
-//      stillBuilder.addTarget(livePhotoImageStreamReader.getSurface());
-//    } else {
-//      stillBuilder.addTarget(pictureImageReader.getSurface());
-//    }
 
     // Zoom.
     stillBuilder.set(
@@ -771,6 +775,9 @@ class Camera
 
     // Have all features update the builder.
     updateBuilderSettings(stillBuilder);
+
+    stillBuilder.addTarget(pictureImageReader.getSurface());
+//    stillBuilder.removeTarget(livePhotoImageStreamReader.getSurface());
 
     // Orientation.
     final PlatformChannel.DeviceOrientation lockedOrientation =
@@ -792,16 +799,13 @@ class Camera
           }
         };
 
-//    try {
-//      captureSession.stopRepeating();
+    try {
+      captureSession.stopRepeating();
       Log.i(TAG, "sending capture request");
-//      captureSession.capture(stillBuilder.build(), captureCallback, backgroundHandler);
-      if (enableLivePhoto) {
-        mCircEncoder.saveVideo(livePhotoOutputFile);
-      }
-//    } catch (CameraAccessException e) {
-//      dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
-//    }
+      captureSession.capture(stillBuilder.build(), captureCallback, backgroundHandler);
+    } catch (CameraAccessException e) {
+      dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
+    }
   }
 
   @SuppressWarnings("deprecation")
@@ -1152,6 +1156,15 @@ class Camera
     return cameraFeatures.getSensorOrientation().getDeviceOrientationManager();
   }
 
+  int getOrientation() {
+    final PlatformChannel.DeviceOrientation lockedOrientation =
+            cameraFeatures.getSensorOrientation().getLockedCaptureOrientation();
+
+    return lockedOrientation == null
+            ? getDeviceOrientationManager().getVideoOrientation()
+            : getDeviceOrientationManager().getVideoOrientation(lockedOrientation);
+  }
+
   /**
    * Sets zoom level from dart.
    *
@@ -1212,8 +1225,6 @@ class Camera
   public void startPreview() throws CameraAccessException {
     if (pictureImageReader == null || pictureImageReader.getSurface() == null) return;
     Log.i(TAG, "startPreview");
-//    List<Surface> surfaces = new ArrayList<>();
-//    surfaces.add(pictureImageReader.getSurface());
     if (enableLivePhoto) {
       startCapture(false, false);
     } else {
@@ -1421,64 +1432,6 @@ class Camera
     @VisibleForTesting
     public static Handler create(Looper looper) {
       return new Handler(looper);
-    }
-  }
-
-  private static class LivePhotoHandler extends Handler implements CircularEncoder.Callback {
-    public static final int MSG_FRAME_AVAILABLE = 1;
-    public static final int MSG_FILE_SAVE_COMPLETE = 2;
-    public static final int MSG_BUFFER_STATUS = 3;
-
-    private WeakReference<Camera> mWeakCamera;
-
-    public LivePhotoHandler(@NonNull Looper looper) {
-      super(looper);
-    }
-
-    public void setCamera(Camera camera) {
-      mWeakCamera = new WeakReference<>(camera);
-    }
-
-    // CircularEncoder.Callback, called on encoder thread
-    @Override
-    public void fileSaveComplete(int status) {
-      sendMessage(obtainMessage(MSG_FILE_SAVE_COMPLETE, status, 0, null));
-    }
-
-    // CircularEncoder.Callback, called on encoder thread
-    @Override
-    public void bufferStatus(long totalTimeMsec) {
-      sendMessage(obtainMessage(MSG_BUFFER_STATUS,
-              (int) (totalTimeMsec >> 32), (int) totalTimeMsec));
-    }
-
-
-    @Override
-    public void handleMessage(Message msg) {
-      Camera camera = mWeakCamera.get();
-      if (camera == null) {
-        Log.d(TAG, "Got message for dead activity");
-        return;
-      }
-
-      switch (msg.what) {
-        case MSG_FILE_SAVE_COMPLETE: {
-          camera.livePhotoFileSaveComplete(msg.arg1);
-          break;
-        }
-        case MSG_FRAME_AVAILABLE: {
-//          camera.flutterTexture.surfaceTexture().updateTexImage();
-          break;
-        }
-        case MSG_BUFFER_STATUS: {
-          long duration = (((long) msg.arg1) << 32) |
-                  (((long) msg.arg2) & 0xffffffffL);
-          Log.d(TAG, "Captured duration=" + duration);
-          break;
-        }
-        default:
-          throw new RuntimeException("Unknown message " + msg.what);
-      }
     }
   }
 }
