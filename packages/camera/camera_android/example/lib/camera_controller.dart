@@ -220,7 +220,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       ResolutionAspectRatio.RATIO_16_9,
       enableAudio: enableAudio,
       enableLivePhoto: true,
-      livePhotoMaxDuration: const Duration(seconds: 10),
+      livePhotoMaxDuration: const Duration(seconds: 4),
     );
 
     CameraPlatform.instance
