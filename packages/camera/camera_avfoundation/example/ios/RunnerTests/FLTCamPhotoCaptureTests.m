@@ -82,7 +82,7 @@
         // Completion runs on IO queue.
         dispatch_queue_t ioQueue = dispatch_queue_create("io_queue", NULL);
         dispatch_async(ioQueue, ^{
-          delegate.completionHandler(filePath, nil);
+          delegate.completionHandler([NSArray arrayWithObjects: filePath, nil], nil);
         });
       });
   cam.capturePhotoOutput = mockOutput;
