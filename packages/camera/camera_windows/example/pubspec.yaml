@@ -8,10 +8,10 @@ environment:
 
 dependencies:
   camera_platform_interface:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_platform_interface
-    path: ../../camera_platform_interface/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      path: packages/camera/camera_platform_interface
+      ref: live_photo
   camera_windows:
     # When depending on this package from a real application you should use:
     #   camera_windows: ^x.y.z

@@ -3,6 +3,7 @@ description: A Flutter plugin for getting information about and controlling the 
 repository: https://github.com/flutter/packages/tree/main/packages/camera/camera_windows
 issue_tracker: https://github.com/flutter/flutter/issues?q=is%3Aissue+is%3Aopen+label%3A%22p%3A+camera%22
 version: 0.2.2+1
+publish_to: none
 
 environment:
   sdk: ">=2.17.0 <3.0.0"
@@ -18,10 +19,10 @@ flutter:
 
 dependencies:
   camera_platform_interface:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_platform_interface
-    path: ../camera_platform_interface/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      path: packages/camera/camera_platform_interface
+      ref: live_photo
   cross_file: ^0.3.1
   flutter:
     sdk: flutter
