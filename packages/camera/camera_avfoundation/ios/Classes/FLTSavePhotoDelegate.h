@@ -11,11 +11,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// The completion handler block for save photo operations.
 /// Can be called from either main queue or IO queue.
-/// If success, `error` will be present and `path` will be nil. Otherewise, `error` will be nil and
-/// `path` will be present.
-/// @param path the path for successfully saved photo file.
+/// If failed, `error` will be present and `paths` will be nil. Otherewise, `error` will be nil and
+/// `paths` will be present.
+/// @param paths the paths for successfully saved photo file and movie file (for LivePhotos).
 /// @param error photo capture error or IO error.
-typedef void (^FLTSavePhotoDelegateCompletionHandler)(NSString *_Nullable path,
+typedef void (^FLTSavePhotoDelegateCompletionHandler)(NSArray *_Nullable paths,
                                                       NSError *_Nullable error);
 
 /**
@@ -32,6 +32,7 @@ typedef void (^FLTSavePhotoDelegateCompletionHandler)(NSString *_Nullable path,
  */
 - (instancetype)initWithPath:(NSString *)path
                      ioQueue:(dispatch_queue_t)ioQueue
+             enableLivePhoto:(BOOL)enableLivePhoto
            completionHandler:(FLTSavePhotoDelegateCompletionHandler)completionHandler;
 @end
 

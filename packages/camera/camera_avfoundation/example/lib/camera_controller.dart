@@ -228,6 +228,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       resolutionPreset,
       ResolutionAspectRatio.RATIO_16_9,
       enableAudio: enableAudio,
+      enableLivePhoto: true,
     );
 
     CameraPlatform.instance

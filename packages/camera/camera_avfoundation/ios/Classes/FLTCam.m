@@ -42,6 +42,7 @@
 
 @property(readonly, nonatomic) int64_t textureId;
 @property BOOL enableAudio;
+@property BOOL enableLivePhoto;
 @property(nonatomic) FLTImageStreamHandler *imageStreamHandler;
 @property(readonly, nonatomic) AVCaptureSession *videoCaptureSession;
 @property(readonly, nonatomic) AVCaptureSession *audioCaptureSession;
@@ -96,6 +97,7 @@ NSString *const errorMethod = @"error";
                   resolutionPreset:(NSString *)resolutionPreset
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
+                   enableLivePhoto:(BOOL)enableLivePhoto
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue
                              error:(NSError **)error {
@@ -103,6 +105,7 @@ NSString *const errorMethod = @"error";
                  resolutionPreset:resolutionPreset
             resolutionAspectRatio:resolutionAspectRatio
                       enableAudio:enableAudio
+                  enableLivePhoto:enableLivePhoto
                       orientation:orientation
               videoCaptureSession:[[AVCaptureSession alloc] init]
               audioCaptureSession:[[AVCaptureSession alloc] init]
@@ -114,6 +117,7 @@ NSString *const errorMethod = @"error";
                   resolutionPreset:(NSString *)resolutionPreset
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
+                   enableLivePhoto:(BOOL)enableLivePhoto
                        orientation:(UIDeviceOrientation)orientation
                videoCaptureSession:(AVCaptureSession *)videoCaptureSession
                audioCaptureSession:(AVCaptureSession *)audioCaptureSession
@@ -132,6 +136,7 @@ NSString *const errorMethod = @"error";
     *error = e;
   }
   _enableAudio = enableAudio;
+  _enableLivePhoto = enableLivePhoto;
   _captureSessionQueue = captureSessionQueue;
   _pixelBufferSynchronizationQueue =
       dispatch_queue_create("io.flutter.camera.pixelBufferSynchronizationQueue", NULL);
@@ -163,9 +168,16 @@ NSString *const errorMethod = @"error";
   [_videoCaptureSession addOutputWithNoConnections:_captureVideoOutput];
   [_videoCaptureSession addConnection:connection];
 
+  if (_enableLivePhoto) {
+    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+  }
+  
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
   [_videoCaptureSession addOutput:_capturePhotoOutput];
+  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
+    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+  }
 
   _motionManager = [[CMMotionManager alloc] init];
   [_motionManager startAccelerometerUpdates];
@@ -255,6 +267,24 @@ NSString *const errorMethod = @"error";
 
 - (void)captureToFile:(FLTThreadSafeFlutterResult *)result {
   AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
+
+  NSError *error;
+  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
+    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+    
+    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{(NSString *)AVVideoCodecKey : AVVideoCodecTypeHEVC}];
+    NSString *videoPath = [self getTemporaryFilePathWithExtension:@"mp4"
+                                                          subfolder:@"videos"
+                                                             prefix:@"REC_"
+                                                              error:error];
+    if (error) {
+      [result sendError:error];
+      return;
+    }
+    
+    settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
+  }
+  
   if (_resolutionPreset == FLTResolutionPresetMax) {
     [settings setHighResolutionPhotoEnabled:YES];
   }
@@ -263,7 +293,6 @@ NSString *const errorMethod = @"error";
   if (avFlashMode != -1) {
     [settings setFlashMode:avFlashMode];
   }
-  NSError *error;
   NSString *path = [self getTemporaryFilePathWithExtension:@"jpg"
                                                  subfolder:@"pictures"
                                                     prefix:@"CAP_"
@@ -277,7 +306,8 @@ NSString *const errorMethod = @"error";
   FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
            initWithPath:path
                 ioQueue:self.photoIOQueue
-      completionHandler:^(NSString *_Nullable path, NSError *_Nullable error) {
+        enableLivePhoto:self.enableLivePhoto
+      completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         dispatch_async(strongSelf.captureSessionQueue, ^{
@@ -291,7 +321,7 @@ NSString *const errorMethod = @"error";
           [result sendError:error];
         } else {
           NSAssert(path, @"Path must not be nil if no error.");
-          [result sendSuccessWithData:path];
+          [result sendSuccessWithData:paths];
         }
       }];
 
@@ -407,6 +437,9 @@ NSString *const errorMethod = @"error";
           @throw error;
         }
     }
+  }
+  if (_enableLivePhoto) {
+    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
 }

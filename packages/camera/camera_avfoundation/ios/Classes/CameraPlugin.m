@@ -276,7 +276,8 @@
       // `prepareForVideoRecording` call. This is because `prepareForVideoRecording` call is
       // optional, and used as a workaround to fix a missing frame issue on iOS.
       BOOL audioEnabled = [call.arguments[@"enableAudio"] boolValue];
-      if (audioEnabled) {
+      BOOL livePhotoEnabled = [call.arguments[@"enableLivePhoto"] boolValue];
+      if (audioEnabled || livePhotoEnabled) {
         // Setup audio capture session only if granted audio access.
         FLTRequestAudioPermissionWithCompletionHandler(^(FlutterError *error) {
           // cannot use the outter `strongSelf`
@@ -306,11 +307,13 @@
     NSString *resolutionPreset = createMethodCall.arguments[@"resolutionPreset"];
     NSString *resolutionAspectRatio = createMethodCall.arguments[@"resolutionAspectRatio"];
     NSNumber *enableAudio = createMethodCall.arguments[@"enableAudio"];
+    NSNumber *enableLivePhoto = createMethodCall.arguments[@"enableLivePhoto"];
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
                                resolutionAspectRatio:resolutionAspectRatio
                                          enableAudio:[enableAudio boolValue]
+                                     enableLivePhoto:[enableLivePhoto boolValue]
                                          orientation:[[UIDevice currentDevice] orientation]
                                  captureSessionQueue:strongSelf.captureSessionQueue
                                                error:&error];

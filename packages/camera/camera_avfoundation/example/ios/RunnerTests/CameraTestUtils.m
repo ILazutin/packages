@@ -22,6 +22,7 @@ FLTCam *FLTCreateCamWithCaptureSessionQueue(dispatch_queue_t captureSessionQueue
   return [[FLTCam alloc] initWithCameraName:@"camera"
                            resolutionPreset:@"medium"
                                 enableAudio:true
+                            enableLivePhoto:false
                                 orientation:UIDeviceOrientationPortrait
                         videoCaptureSession:videoSessionMock
                         audioCaptureSession:audioSessionMock

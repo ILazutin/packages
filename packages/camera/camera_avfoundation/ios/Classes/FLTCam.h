@@ -36,6 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param cameraName a name used to uniquely identify the camera.
 /// @param resolutionPreset the resolution preset
 /// @param enableAudio YES if audio should be enabled for video capturing; NO otherwise.
+/// @param enableLivePhoto YES if should capture live photo, if supported
 /// @param orientation the orientation of camera
 /// @param captureSessionQueue the queue on which camera's capture session operations happen.
 /// @param error report to the caller if any error happened creating the camera.
@@ -43,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
                   resolutionPreset:(NSString *)resolutionPreset
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
+                   enableLivePhoto:(BOOL)enableLivePhoto
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue
                              error:(NSError **)error;
