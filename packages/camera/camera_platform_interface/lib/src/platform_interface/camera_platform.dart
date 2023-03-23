@@ -54,6 +54,7 @@ abstract class CameraPlatform extends PlatformInterface {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDesctiption,
   }) {
     throw UnimplementedError('createCamera() is not implemented.');
   }
