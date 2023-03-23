@@ -22,6 +22,7 @@ import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.SessionConfiguration;
@@ -138,7 +139,10 @@ public class CameraTest {
             mockCameraProperties,
             resolutionPreset,
             ResolutionAspectRatio.RATIO_16_9,
-            enableAudio);
+            enableAudio,
+            false,
+            0,
+            null);
 
     TestUtils.setPrivateField(camera, "captureSession", mockCaptureSession);
     TestUtils.setPrivateField(camera, "previewRequestBuilder", mockPreviewRequestBuilder);
@@ -166,6 +170,7 @@ public class CameraTest {
     final CameraFeatureFactory mockCameraFeatureFactory = mock(CameraFeatureFactory.class);
     final String cameraName = "1";
     final ResolutionPreset resolutionPreset = ResolutionPreset.high;
+    final ResolutionAspectRatio aspectRatio = ResolutionAspectRatio.RATIO_16_9;
     final boolean enableAudio = false;
 
     when(mockCameraProperties.getCameraName()).thenReturn(cameraName);
@@ -181,8 +186,11 @@ public class CameraTest {
             mockDartMessenger,
             mockCameraProperties,
             resolutionPreset,
-            ResolutionAspectRatio.RATIO_16_9,
-            enableAudio);
+            aspectRatio,
+            enableAudio,
+            false,
+            0,
+            null);
 
     verify(mockCameraFeatureFactory, times(1))
         .createSensorOrientationFeature(mockCameraProperties, mockActivity, mockDartMessenger);
@@ -197,7 +205,7 @@ public class CameraTest {
     verify(mockCameraFeatureFactory, times(1)).createFpsRangeFeature(mockCameraProperties);
     verify(mockCameraFeatureFactory, times(1)).createNoiseReductionFeature(mockCameraProperties);
     verify(mockCameraFeatureFactory, times(1))
-        .createResolutionFeature(mockCameraProperties, resolutionPreset, cameraName);
+        .createResolutionFeature(mockCameraProperties, CameraUtils.getCameraManager(mockActivity), resolutionPreset, aspectRatio, cameraName);
     verify(mockCameraFeatureFactory, times(1)).createZoomLevelFeature(mockCameraProperties);
     assertNotNull("should create a camera", camera);
   }
@@ -971,7 +979,9 @@ public class CameraTest {
     @Override
     public ResolutionFeature createResolutionFeature(
         @NonNull CameraProperties cameraProperties,
+        @NonNull CameraManager cameraManager,
         ResolutionPreset initialSetting,
+        ResolutionAspectRatio aspectRatio,
         String cameraName) {
       return mockResolutionFeature;
     }

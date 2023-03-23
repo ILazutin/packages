@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import android.app.Activity;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.media.CamcorderProfile;
 import android.media.EncoderProfiles;
@@ -47,6 +48,7 @@ public class CameraTest_getRecordingProfileTest {
   private CameraFeatureFactory mockCameraFeatureFactory;
   private DartMessenger mockDartMessenger;
   private Camera camera;
+  private Activity mockActivity;
   private CameraCaptureSession mockCaptureSession;
   private CaptureRequest.Builder mockPreviewRequestBuilder;
   private MockedStatic<Camera.HandlerThreadFactory> mockHandlerThreadFactory;
@@ -59,11 +61,12 @@ public class CameraTest_getRecordingProfileTest {
     mockCameraProperties = mock(CameraProperties.class);
     mockCameraFeatureFactory = new TestCameraFeatureFactory();
     mockDartMessenger = mock(DartMessenger.class);
+    mockActivity = mock(Activity.class);
 
-    final Activity mockActivity = mock(Activity.class);
     final TextureRegistry.SurfaceTextureEntry mockFlutterTexture =
         mock(TextureRegistry.SurfaceTextureEntry.class);
     final ResolutionPreset resolutionPreset = ResolutionPreset.high;
+    final ResolutionAspectRatio aspectRatio = ResolutionAspectRatio.RATIO_16_9;
     final boolean enableAudio = false;
 
     camera =
@@ -74,15 +77,18 @@ public class CameraTest_getRecordingProfileTest {
             mockDartMessenger,
             mockCameraProperties,
             resolutionPreset,
-            ResolutionAspectRatio.RATIO_16_9,
-            enableAudio);
+            aspectRatio,
+            enableAudio,
+            false,
+            0,
+            null);
   }
 
   @Config(maxSdk = 30)
   @Test
   public void getRecordingProfileLegacy() {
     ResolutionFeature mockResolutionFeature =
-        mockCameraFeatureFactory.createResolutionFeature(mockCameraProperties, null, null);
+        mockCameraFeatureFactory.createResolutionFeature(mockCameraProperties, CameraUtils.getCameraManager(mockActivity), null, null, null);
     CamcorderProfile mockCamcorderProfile = mock(CamcorderProfile.class);
 
     when(mockResolutionFeature.getRecordingProfileLegacy()).thenReturn(mockCamcorderProfile);
@@ -97,7 +103,7 @@ public class CameraTest_getRecordingProfileTest {
   @Test
   public void getRecordingProfile() {
     ResolutionFeature mockResolutionFeature =
-        mockCameraFeatureFactory.createResolutionFeature(mockCameraProperties, null, null);
+        mockCameraFeatureFactory.createResolutionFeature(mockCameraProperties, CameraUtils.getCameraManager(mockActivity), null, null, null);
     EncoderProfiles mockRecordingProfile = mock(EncoderProfiles.class);
 
     when(mockResolutionFeature.getRecordingProfile()).thenReturn(mockRecordingProfile);
@@ -161,7 +167,9 @@ public class CameraTest_getRecordingProfileTest {
     @Override
     public ResolutionFeature createResolutionFeature(
         @NonNull CameraProperties cameraProperties,
+        @NonNull CameraManager cameraManager,
         ResolutionPreset initialSetting,
+        ResolutionAspectRatio aspectRatio,
         String cameraName) {
       return mockResolutionFeature;
     }
