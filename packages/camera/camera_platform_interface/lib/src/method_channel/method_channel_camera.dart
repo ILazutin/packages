@@ -91,7 +91,7 @@ class MethodChannelCamera extends CameraPlatform {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
-    CameraDescription? secondCameraDesctiption,
+    CameraDescription? secondCameraDescription,
   }) async {
     try {
       final Map<String, dynamic>? reply = await _channel
