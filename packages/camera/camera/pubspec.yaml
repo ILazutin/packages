@@ -5,6 +5,7 @@ description: A Flutter plugin for controlling the camera. Supports previewing
 repository: https://github.com/flutter/packages/tree/main/packages/camera/camera
 issue_tracker: https://github.com/flutter/flutter/issues?q=is%3Aissue+is%3Aopen+label%3A%22p%3A+camera%22
 version: 0.10.4+1
+publish_to: none
 
 environment:
   sdk: ">=2.17.0 <3.0.0"
@@ -22,25 +23,25 @@ flutter:
 
 dependencies:
   camera_android: 
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_android
-    path: ../camera_android/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      ref: live_photo
+      path: packages/camera/camera_android
   camera_avfoundation:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_avfoundation
-    path: ../camera_avfoundation/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      ref: live_photo
+      path: packages/camera/camera_avfoundation
   camera_platform_interface:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_platform_interface
-    path: ../camera_platform_interface/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      ref: live_photo
+      path: packages/camera/camera_platform_interface
   camera_web:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_web
-    path: ../camera_web/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      ref: live_photo
+      path: packages/camera/camera_web
   flutter:
     sdk: flutter
   flutter_plugin_android_lifecycle: ^2.0.2

@@ -12,10 +12,10 @@ dependencies:
 dev_dependencies:
   async: ^2.5.0
   camera_platform_interface:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_platform_interface
-    path: ../../camera_platform_interface/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      path: packages/camera/camera_platform_interface
+      ref: live_photo
   camera_web:
     path: ../
   cross_file: ^0.3.1

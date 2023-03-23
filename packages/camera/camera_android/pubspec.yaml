@@ -4,6 +4,8 @@ repository: https://github.com/flutter/packages/tree/main/packages/camera/camera
 issue_tracker: https://github.com/flutter/flutter/issues?q=is%3Aissue+is%3Aopen+label%3A%22p%3A+camera%22
 version: 0.10.5+1
 
+publish_to: none
+
 environment:
   sdk: ">=2.17.0 <3.0.0"
   flutter: ">=3.0.0"
@@ -19,10 +21,10 @@ flutter:
 
 dependencies:
   camera_platform_interface:
-    # git:
-    #   url: https://github.com/ILazutin/packages.git
-    #   path: packages/camera/camera_platform_interface
-    path: ../camera_platform_interface/
+    git:
+      url: https://github.com/ILazutin/packages.git
+      path: packages/camera/camera_platform_interface
+      ref: live_photo
   flutter:
     sdk: flutter
   flutter_plugin_android_lifecycle: ^2.0.2
