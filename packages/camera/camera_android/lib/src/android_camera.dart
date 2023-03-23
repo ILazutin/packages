@@ -99,7 +99,12 @@ class AndroidCamera extends CameraPlatform {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDescription,
   }) async {
+    assert(
+        secondCameraDescription != null &&
+            secondCameraDescription.name == cameraDescription.name,
+        'Can not use the same camera for main and second camera slot');
     try {
       final Map<String, dynamic>? reply = await _channel
           .invokeMapMethod<String, dynamic>('create', <String, dynamic>{
@@ -112,6 +117,7 @@ class AndroidCamera extends CameraPlatform {
         'enableAudio': enableAudio,
         'enableLivePhoto': enableLivePhoto,
         'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds,
+        'secondCameraName': secondCameraDescription?.name,
       });
 
       return reply!['cameraId']! as int;
