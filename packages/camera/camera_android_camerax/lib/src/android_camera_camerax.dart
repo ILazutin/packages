@@ -126,6 +126,7 @@ class AndroidCameraCameraX extends CameraPlatform {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDescription,
   }) async {
     // Must obtain proper permissions before attempting to access a camera.
     await requestCameraPermissions(enableAudio);

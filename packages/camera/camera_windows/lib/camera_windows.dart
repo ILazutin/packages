@@ -71,6 +71,7 @@ class CameraWindows extends CameraPlatform {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDescription,
   }) async {
     try {
       // If resolutionPreset is not specified, plugin selects the highest resolution possible.

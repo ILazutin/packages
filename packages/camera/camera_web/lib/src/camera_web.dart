@@ -204,6 +204,7 @@ class CameraPlugin extends CameraPlatform {
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDescription,
   }) async {
     try {
       if (!camerasMetadata.containsKey(cameraDescription)) {
