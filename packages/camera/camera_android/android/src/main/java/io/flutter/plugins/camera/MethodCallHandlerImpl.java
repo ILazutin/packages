@@ -25,7 +25,10 @@ import io.flutter.plugins.camera.features.flash.FlashMode;
 import io.flutter.plugins.camera.features.resolution.ResolutionAspectRatio;
 import io.flutter.plugins.camera.features.resolution.ResolutionPreset;
 import io.flutter.view.TextureRegistry;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -38,6 +41,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   private final MethodChannel methodChannel;
   private final EventChannel imageStreamChannel;
   private @Nullable Camera camera;
+  private @Nullable Camera secondCamera;
+  private List<String> mainCameraFiles = new ArrayList<>();
+  private List<String> secondCameraFiles = new ArrayList<>();
 
   MethodCallHandlerImpl(
       Activity activity,
@@ -73,6 +79,10 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             camera.close();
           }
 
+          if (secondCamera != null) {
+            secondCamera.close();
+          }
+
           cameraPermissions.requestPermissions(
               activity,
               permissionsRegistry,
@@ -95,6 +105,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           if (camera != null) {
             try {
               camera.open(call.argument("imageFormatGroup"));
+              if (secondCamera != null) {
+                secondCamera.open(null);
+              }
               result.success(null);
             } catch (Exception e) {
               handleException(e, result);
@@ -109,7 +122,51 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         }
       case "takePicture":
         {
-          camera.takePicture(result);
+          assert camera != null;
+          mainCameraFiles.clear();
+          secondCameraFiles.clear();
+          camera.takePicture(result, secondCamera == null ? null : new Camera.TakePictureCallback() {
+            @Override
+            public void onComplete(List<String> files) {
+              mainCameraFiles.addAll(files);
+              if (secondCameraFiles.size() > 0) {
+                mainCameraFiles.addAll(secondCameraFiles);
+                camera.sendTakePictureResult(result, mainCameraFiles);
+              }
+            }
+
+            @Override
+            public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
+              camera.sendError(result, errorCode, errorMessage, errorDetails);
+            }
+
+            @Override
+            public void onCameraErrorEvent(@Nullable String description) {
+              camera.sendCameraErrorEvent(description);
+            }
+          });
+          if (secondCamera != null) {
+            secondCamera.takePicture(result, new Camera.TakePictureCallback() {
+              @Override
+              public void onComplete(List<String> files) {
+                secondCameraFiles.addAll(files);
+                if (mainCameraFiles.size() > 0) {
+                  mainCameraFiles.addAll(secondCameraFiles);
+                  camera.sendTakePictureResult(result, mainCameraFiles);
+                }
+              }
+
+              @Override
+              public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
+                camera.sendError(result, errorCode, errorMessage, errorDetails);
+              }
+
+              @Override
+              public void onCameraErrorEvent(@Nullable String description) {
+                camera.sendCameraErrorEvent(description);
+              }
+            });
+          }
           break;
         }
       case "prepareForVideoRecording":
@@ -323,6 +380,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
 
           try {
             camera.lockCaptureOrientation(orientation);
+            if (secondCamera != null) {
+              secondCamera.lockCaptureOrientation(orientation);
+            }
             result.success(null);
           } catch (Exception e) {
             handleException(e, result);
@@ -333,6 +393,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         {
           try {
             camera.unlockCaptureOrientation();
+            if (secondCamera != null) {
+              secondCamera.unlockCaptureOrientation();
+            }
             result.success(null);
           } catch (Exception e) {
             handleException(e, result);
@@ -380,6 +443,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     boolean enableAudio = call.argument("enableAudio");
     boolean enableLivePhoto = Boolean.TRUE.equals(call.argument("enableLivePhoto"));
     int livePhotoMaxDuration = call.argument("livePhotoMaxDuration");
+    String secondCameraName = call.argument("secondCameraName");
 
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
         textureRegistry.createSurfaceTexture();
@@ -390,6 +454,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         new CameraPropertiesImpl(cameraName, CameraUtils.getCameraManager(activity));
     ResolutionPreset resolutionPreset = ResolutionPreset.valueOf(preset);
     ResolutionAspectRatio resolutionAspectRatio = ResolutionAspectRatio.valueOf(aspectRatio);
+    CameraProperties secondCameraProperties = secondCameraName == null ? null : new CameraPropertiesImpl(secondCameraName, CameraUtils.getCameraManager(activity));
 
     camera =
         new Camera(
@@ -404,6 +469,27 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             enableLivePhoto,
             livePhotoMaxDuration
         );
+
+    if (secondCameraProperties != null) {
+      TextureRegistry.SurfaceTextureEntry secondFlutterSurfaceTexture =
+              textureRegistry.createSurfaceTexture();
+      DartMessenger secondDartMessenger =
+              new DartMessenger(
+                      messenger, secondFlutterSurfaceTexture.id(), new Handler(Looper.getMainLooper()));
+      secondCamera =
+              new Camera(
+                      activity,
+                      secondFlutterSurfaceTexture,
+                      new CameraFeatureFactoryImpl(),
+                      secondDartMessenger,
+                      secondCameraProperties,
+                      resolutionPreset,
+                      resolutionAspectRatio,
+                      enableAudio,
+                      false,
+                      0
+              );
+    }
 
     Map<String, Object> reply = new HashMap<>();
     reply.put("cameraId", flutterSurfaceTexture.id());

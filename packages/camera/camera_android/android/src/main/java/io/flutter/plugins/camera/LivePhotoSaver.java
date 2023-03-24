@@ -38,6 +38,7 @@ public class LivePhotoSaver implements Runnable {
 
         bitmapToVideoEncoder.startEncoding(width, height, file);
         for (Bitmap bitmap : bitmaps) {
+            if (bitmap == null) return;
             bitmapToVideoEncoder.queueFrame(bitmap);
         }
         bitmapToVideoEncoder.stopEncoding();

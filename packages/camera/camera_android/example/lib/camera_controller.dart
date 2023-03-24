@@ -169,10 +169,12 @@ class CameraController extends ValueNotifier<CameraValue> {
     this.resolutionPreset, {
     this.enableAudio = true,
     this.imageFormatGroup,
+    this.secondCameraDescription,
   }) : super(const CameraValue.uninitialized());
 
   /// The properties of the camera device controlled by this controller.
   final CameraDescription description;
+  final CameraDescription? secondCameraDescription;
 
   /// The resolution this controller is targeting.
   ///
@@ -221,6 +223,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       enableAudio: enableAudio,
       enableLivePhoto: true,
       livePhotoMaxDuration: const Duration(seconds: 4),
+      secondCameraDescription: secondCameraDescription
     );
 
     CameraPlatform.instance

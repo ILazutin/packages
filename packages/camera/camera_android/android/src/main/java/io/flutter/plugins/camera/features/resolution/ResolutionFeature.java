@@ -92,30 +92,7 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
    * @return The optimal capture size.
    */
   public Size getCaptureSize() {
-    try {
-        CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraProperties.getCameraName());
-        StreamConfigurationMap configs = characteristics.get(
-                CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-        Size[] outputSizes = new Size[0];
-        try {
-          outputSizes = configs.getOutputSizes(ImageFormat.JPEG);
-        } catch (Exception exception) {
-          Log.e("CameraResolution", exception.toString());
-        }
-
-        Size[] highRes = new Size[0];
-        try {
-          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            highRes = configs.getHighResolutionOutputSizes(ImageFormat.JPEG);
-          }
-        } catch (Exception exception) {
-          Log.e("CameraResolution", exception.toString());
-        }
-
-        return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
-    } catch (Exception exception) {
         return this.captureSize;
-    }
   }
 
   @Override

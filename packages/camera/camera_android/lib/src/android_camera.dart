@@ -102,8 +102,8 @@ class AndroidCamera extends CameraPlatform {
     CameraDescription? secondCameraDescription,
   }) async {
     assert(
-        secondCameraDescription != null &&
-            secondCameraDescription.name == cameraDescription.name,
+        secondCameraDescription == null ||
+            secondCameraDescription.name != cameraDescription.name,
         'Can not use the same camera for main and second camera slot');
     try {
       final Map<String, dynamic>? reply = await _channel

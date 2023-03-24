@@ -200,9 +200,11 @@ public class BitmapToVideoEncoder {
 
             if (bitmap == null) continue;
 
-            byte[] byteConvertFrame = ImageUtils.getNV21(bitmap.getWidth(), bitmap.getHeight(), bitmap);
+            Bitmap scaledBitmap = ImageUtils.getScaledBitmap(bitmap, mWidth, mHeight);
 
-            long TIMEOUT_USEC = 500000;
+            byte[] byteConvertFrame = ImageUtils.getNV21(scaledBitmap.getWidth(), scaledBitmap.getHeight(), scaledBitmap);
+
+            long TIMEOUT_USEC = 0;
             int inputBufIndex = mediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
             long ptsUsec = computePresentationTime(mGenerateIndex, frameRate);
             if (inputBufIndex >= 0) {

@@ -104,7 +104,7 @@ class Camera
    */
   private final CameraFeatures cameraFeatures;
 
-  private final SurfaceTextureEntry flutterTexture;
+  private SurfaceTextureEntry flutterTexture;
   private final boolean enableAudio;
   private final boolean enableLivePhoto;
   private final int livePhotoMaxDuration;
@@ -149,6 +149,7 @@ class Camera
   private CameraCaptureProperties captureProps;
 
   private MethodChannel.Result flutterResult;
+  private TakePictureCallback takePictureCallback;
 
   /** A CameraDeviceWrapper implementation that forwards calls to a CameraDevice. */
   private class DefaultCameraDeviceWrapper implements CameraDeviceWrapper {
@@ -447,20 +448,22 @@ class Camera
 
     // Build Flutter surface to render to.
     ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
-    SurfaceTexture surfaceTexture = flutterTexture.surfaceTexture();
-    surfaceTexture.setDefaultBufferSize(
-        resolutionFeature.getPreviewSize().getWidth(),
-        resolutionFeature.getPreviewSize().getHeight());
-    previewSurface = new Surface(surfaceTexture);
+    if (flutterTexture != null) {
+      SurfaceTexture surfaceTexture = flutterTexture.surfaceTexture();
+      surfaceTexture.setDefaultBufferSize(
+              resolutionFeature.getPreviewSize().getWidth(),
+              resolutionFeature.getPreviewSize().getHeight());
+      previewSurface = new Surface(surfaceTexture);
+    }
 
     if (enableLivePhoto) {
       previewRequestBuilder.addTarget(livePhotoImageStreamReader.getSurface());
-    } else {
+    } else if (previewSurface != null) {
       previewRequestBuilder.addTarget(previewSurface);
     }
 
     List<Surface> remainingSurfaces = Arrays.asList(surfaces);
-    if (templateType != CameraDevice.TEMPLATE_PREVIEW) {
+    if (templateType != CameraDevice.TEMPLATE_PREVIEW || previewSurface == null) {
       // If it is not preview mode, add all surfaces as targets.
       for (Surface surface : remainingSurfaces) {
         previewRequestBuilder.addTarget(surface);
@@ -514,7 +517,7 @@ class Camera
       List<OutputConfiguration> configs = new ArrayList<>();
       if (enableLivePhoto) {
         configs.add(new OutputConfiguration(livePhotoImageStreamReader.getSurface()));
-      } else {
+      } else if (previewSurface != null) {
         configs.add(new OutputConfiguration(previewSurface));
       }
       for (Surface surface : remainingSurfaces) {
@@ -526,7 +529,7 @@ class Camera
       List<Surface> surfaceList = new ArrayList<>();
       if (enableLivePhoto) {
         surfaceList.add(livePhotoImageStreamReader.getSurface());
-      } else {
+      } else if (previewSurface != null) {
         surfaceList.add(previewSurface);
       }
       surfaceList.addAll(remainingSurfaces);
@@ -541,7 +544,11 @@ class Camera
       List<String> files = new ArrayList<>();
       files.add(captureFile.getAbsolutePath());
       files.add(livePhotoOutputFile.getAbsolutePath());
-      dartMessenger.finish(flutterResult, files);
+      if (takePictureCallback != null) {
+        takePictureCallback.onComplete(files);
+      } else {
+        dartMessenger.finish(flutterResult, files);
+      }
     }
   }
 
@@ -615,7 +622,8 @@ class Camera
             surfaces.toArray(new Surface[0]));
   }
 
-  public void takePicture(@NonNull final Result result) {
+  public void takePicture(@NonNull final Result result, @Nullable TakePictureCallback callback) {
+    takePictureCallback = callback;
     // Only take one picture at a time.
     if (cameraCaptureCallback.getCameraState() != CameraState.STATE_PREVIEW) {
       result.error("captureAlreadyActive", "Picture is currently already being captured", null);
@@ -633,7 +641,11 @@ class Camera
         livePhotoOutputFile = File.createTempFile("CAP", ".mp4", outputDir);
       }
     } catch (IOException | SecurityException e) {
-      dartMessenger.error(flutterResult, "cannotCreateFile", e.getMessage(), null);
+      if (takePictureCallback != null) {
+        takePictureCallback.onError("cannotCreateFile", e.getMessage(), null);
+      } else {
+        dartMessenger.error(flutterResult, "cannotCreateFile", e.getMessage(), null);
+      }
       return;
     }
 
@@ -647,6 +659,10 @@ class Camera
     } else {
       runPrecaptureSequence();
     }
+  }
+
+  public void sendTakePictureResult(@NonNull final Result result, List<String> files) {
+    dartMessenger.finish(result, files);
   }
 
   /**
@@ -680,6 +696,11 @@ class Camera
           previewRequestBuilder.build(), cameraCaptureCallback, backgroundHandler);
 
     } catch (CameraAccessException e) {
+      if (takePictureCallback != null) {
+        takePictureCallback.onError("runPreCaptureSequence", e.getMessage(), null);
+      } else {
+        dartMessenger.error(flutterResult, "runPreCaptureSequence", e.getMessage(), null);
+      }
       e.printStackTrace();
     }
   }
@@ -699,23 +720,31 @@ class Camera
     if (enableLivePhoto) {
       needMakeCapture = true;
 
-      ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
-
       int frameRate;
+      int width;
+      int height;
       EncoderProfiles recordingProfile = getRecordingProfile();
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
+        width = recordingProfile.getVideoProfiles().get(0).getWidth();
+        height = recordingProfile.getVideoProfiles().get(0).getHeight();
         frameRate = recordingProfile.getVideoProfiles().get(0).getFrameRate();
       } else {
         CamcorderProfile profile = getRecordingProfileLegacy();
+        width = profile.videoFrameWidth;
+        height = profile.videoFrameHeight;
         frameRate = profile.videoFrameRate;
       }
 
-      backgroundHandler.post(new LivePhotoSaver(
+      long livePhotoDelayed = 0;
+      if (livePhotoQueue.size() < livePhotoQueue.maxSize() / 2) {
+        livePhotoDelayed = livePhotoMaxDuration / 2;
+      }
+      backgroundHandler.postDelayed(new LivePhotoSaver(
               livePhotoQueue,
               livePhotoOutputFile,
               getVideoOrientation(),
-              resolutionFeature.getPreviewSize().getWidth(),
-              resolutionFeature.getPreviewSize().getHeight(),
+              width,
+              height,
               frameRate,
               new LivePhotoSaver.Callback() {
         @Override
@@ -725,9 +754,13 @@ class Camera
 
         @Override
         public void onError(String errorCode, String errorMessage) {
-          dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+          if (takePictureCallback != null) {
+            takePictureCallback.onError(errorCode, errorMessage, null);
+          } else {
+            dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+          }
         }
-      }));
+      }), livePhotoDelayed);
     }
 
     // This is the CaptureRequest.Builder that is used to take a picture.
@@ -735,7 +768,11 @@ class Camera
     try {
       stillBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
     } catch (CameraAccessException e) {
-      dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
+      if (takePictureCallback != null) {
+        takePictureCallback.onError("cameraAccess", e.getMessage(), null);
+      } else {
+        dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
+      }
       return;
     }
 
@@ -770,7 +807,11 @@ class Camera
       Log.i(TAG, "sending capture request");
       captureSession.capture(stillBuilder.build(), captureCallback, backgroundHandler);
     } catch (CameraAccessException e) {
-      dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
+      if (takePictureCallback != null) {
+        takePictureCallback.onError("cameraAccess", e.getMessage(), null);
+      } else {
+        dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
+      }
     }
   }
 
@@ -823,9 +864,14 @@ class Camera
         CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
 
     try {
-      captureSession.capture(previewRequestBuilder.build(), null, backgroundHandler);
+      cameraCaptureCallback.setCameraState(CameraState.STATE_WAITING_FOCUS);
+      captureSession.capture(previewRequestBuilder.build(), cameraCaptureCallback, backgroundHandler);
     } catch (CameraAccessException e) {
-      dartMessenger.sendCameraErrorEvent(e.getMessage());
+      if (takePictureCallback != null) {
+        takePictureCallback.onCameraErrorEvent(e.getMessage());
+      } else {
+        dartMessenger.sendCameraErrorEvent(e.getMessage());
+      }
     }
   }
 
@@ -848,14 +894,24 @@ class Camera
 
       captureSession.capture(previewRequestBuilder.build(), null, backgroundHandler);
     } catch (CameraAccessException e) {
-      dartMessenger.sendCameraErrorEvent(e.getMessage());
+      if (takePictureCallback != null) {
+        takePictureCallback.onCameraErrorEvent(e.getMessage());
+      } else {
+        dartMessenger.sendCameraErrorEvent(e.getMessage());
+      }
       return;
     }
 
     refreshPreviewCaptureSession(
         null,
         (errorCode, errorMessage) ->
-            dartMessenger.error(flutterResult, errorCode, errorMessage, null));
+        {
+          if (takePictureCallback != null) {
+            takePictureCallback.onError(errorCode, errorMessage, null);
+          } else {
+            dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+          }
+        });
   }
 
   public void startVideoRecording(
@@ -1236,16 +1292,30 @@ class Camera
                 if (!enableLivePhoto || livePhotoFileSaveComplete) {
                   List<String> files = new ArrayList<>();
                   files.add(absolutePath);
-                  dartMessenger.finish(flutterResult, files);
+                  if (enableLivePhoto && livePhotoFileSaveComplete) {
+                    files.add(livePhotoOutputFile.getAbsolutePath());
+                  }
+
+                  if (takePictureCallback != null) {
+                    takePictureCallback.onComplete(files);
+                  } else {
+                    dartMessenger.finish(flutterResult, files);
+                  }
                 }
               }
 
               @Override
               public void onError(String errorCode, String errorMessage) {
-                dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+                if (takePictureCallback != null) {
+                  takePictureCallback.onError(errorCode, errorMessage, null);
+                } else {
+                  dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+                }
               }
             }));
-    cameraCaptureCallback.setCameraState(CameraState.STATE_PREVIEW);
+    if (flutterTexture != null) {
+      cameraCaptureCallback.setCameraState(CameraState.STATE_PREVIEW);
+    }
   }
 
   private void prepareRecording(@NonNull Result result) {
@@ -1324,6 +1394,14 @@ class Camera
         backgroundHandler);
   }
 
+  public void sendError(@NonNull Result result, String errorCode, String errorMessage, @Nullable Object errorDetails) {
+    dartMessenger.error(result, errorCode, errorMessage, errorDetails);
+  }
+
+  public void sendCameraErrorEvent(@Nullable String description) {
+    dartMessenger.sendCameraErrorEvent(description);
+  }
+
   private void closeCaptureSession() {
     if (captureSession != null) {
       Log.i(TAG, "closeCaptureSession");
@@ -1373,7 +1451,9 @@ class Camera
     Log.i(TAG, "dispose");
 
     close();
-    flutterTexture.release();
+    if (flutterTexture != null) {
+      flutterTexture.release();
+    }
     getDeviceOrientationManager().stop();
   }
 
@@ -1409,5 +1489,11 @@ class Camera
     public static Handler create(Looper looper) {
       return new Handler(looper);
     }
+  }
+
+  interface TakePictureCallback {
+    void onComplete(List<String> files);
+    void onError(String errorCode, String errorMessage, @Nullable Object errorDetails);
+    void onCameraErrorEvent(@Nullable String description);
   }
 }
