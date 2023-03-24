@@ -720,18 +720,15 @@ class Camera
     if (enableLivePhoto) {
       needMakeCapture = true;
 
+      ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
+      Size videoCaptureSize = resolutionFeature.getCaptureSizeForPreset(ResolutionPreset.high);
+
       int frameRate;
-      int width;
-      int height;
       EncoderProfiles recordingProfile = getRecordingProfile();
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
-        width = recordingProfile.getVideoProfiles().get(0).getWidth();
-        height = recordingProfile.getVideoProfiles().get(0).getHeight();
         frameRate = recordingProfile.getVideoProfiles().get(0).getFrameRate();
       } else {
         CamcorderProfile profile = getRecordingProfileLegacy();
-        width = profile.videoFrameWidth;
-        height = profile.videoFrameHeight;
         frameRate = profile.videoFrameRate;
       }
 
@@ -743,8 +740,8 @@ class Camera
               livePhotoQueue,
               livePhotoOutputFile,
               getVideoOrientation(),
-              width,
-              height,
+              videoCaptureSize.getWidth(),
+              videoCaptureSize.getHeight(),
               frameRate,
               new LivePhotoSaver.Callback() {
         @Override

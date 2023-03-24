@@ -5,6 +5,7 @@
 package io.flutter.plugins.camera.features.resolution;
 
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 import android.annotation.TargetApi;
 import android.graphics.ImageFormat;
@@ -18,6 +19,8 @@ import android.media.EncoderProfiles;
 import android.os.Build;
 import android.util.Size;
 import android.util.Log;
+
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import io.flutter.plugins.camera.CameraProperties;
 import io.flutter.plugins.camera.features.CameraFeature;
@@ -92,7 +95,74 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
    * @return The optimal capture size.
    */
   public Size getCaptureSize() {
-        return this.captureSize;
+    try {
+      CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraProperties.getCameraName());
+      StreamConfigurationMap configs = characteristics.get(
+              CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+      Size[] outputSizes = new Size[0];
+      try {
+        outputSizes = configs.getOutputSizes(ImageFormat.JPEG);
+      } catch (Exception exception) {
+        Log.e("CameraResolution", exception.toString());
+      }
+
+      Size[] highRes = new Size[0];
+      try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+          highRes = configs.getHighResolutionOutputSizes(ImageFormat.JPEG);
+        }
+      } catch (Exception exception) {
+        Log.e("CameraResolution", exception.toString());
+      }
+
+      Log.d("CAMERA SIZES HIGH", Arrays.toString(highRes));
+      Log.d("CAMERA SIZES ALL", Arrays.toString(outputSizes));
+
+      return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
+    } catch (Exception exception) {
+      return this.captureSize;
+    }
+  }
+
+  public Size getCaptureSizeForPreset(ResolutionPreset resolutionPreset) {
+    if (currentSetting.compareTo(resolutionPreset) < 0) {
+      resolutionPreset = currentSetting;
+    }
+
+    if (!checkIsSupported()) {
+      return new Size(0, 0);
+    }
+    @Nullable Size calculatedCaptureSize = null;
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      recordingProfileLegacy = null;
+      recordingProfile =
+              getBestAvailableCamcorderProfileForResolutionPreset(cameraId, resolutionPreset);
+      List<EncoderProfiles.VideoProfile> videoProfiles = recordingProfile.getVideoProfiles();
+
+      EncoderProfiles.VideoProfile defaultVideoProfile = videoProfiles.get(0);
+
+      if (defaultVideoProfile != null) {
+        calculatedCaptureSize = new Size(defaultVideoProfile.getWidth(), defaultVideoProfile.getHeight());
+      }
+    }
+
+    if (calculatedCaptureSize == null) {
+      recordingProfile = null;
+      recordingProfileLegacy = getBestAvailableCamcorderProfileForResolutionPresetLegacy(cameraId, resolutionPreset);
+      int width;
+      int height;
+      if (recordingProfileLegacy != null) {
+        width = recordingProfileLegacy.videoFrameWidth;
+        height = recordingProfileLegacy.videoFrameHeight;
+      } else {
+        width = 1280;
+        height = 720;
+      }
+      calculatedCaptureSize = new Size(width, height);
+    }
+
+    return calculatedCaptureSize;
   }
 
   @Override
