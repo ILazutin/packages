@@ -232,6 +232,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     this.imageFormatGroup,
     this.enableLivePhoto = true,
     this.livePhotoMaxDuration,
+    this.secondCameraDescription,
   }) : super(const CameraValue.uninitialized());
 
   /// The properties of the camera device controlled by this controller.
@@ -261,6 +262,8 @@ class CameraController extends ValueNotifier<CameraValue> {
   final bool enableLivePhoto;
 
   final Duration? livePhotoMaxDuration;
+
+  final CameraDescription? secondCameraDescription;
 
   /// The id of a camera that hasn't been initialized.
   @visibleForTesting
@@ -312,6 +315,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         enableAudio: enableAudio,
         enableLivePhoto: enableLivePhoto,
         livePhotoMaxDuration: livePhotoMaxDuration,
+        secondCameraDescription: secondCameraDescription,
       );
 
       _unawaited(CameraPlatform.instance

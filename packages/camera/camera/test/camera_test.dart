@@ -1504,6 +1504,7 @@ class MockCameraPlatform extends Mock
     bool enableAudio = false,
     bool enableLivePhoto = false,
     Duration? livePhotoMaxDuration,
+    CameraDescription? secondCameraDescription,
   }) =>
       mockPlatformException
           ? throw PlatformException(code: 'foo', message: 'bar')

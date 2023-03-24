@@ -127,6 +127,9 @@ class FakeController extends ValueNotifier<CameraValue>
   @override
   ResolutionAspectRatio get resolutionAspectRatio =>
       ResolutionAspectRatio.RATIO_16_9;
+
+  @override
+  CameraDescription? get secondCameraDescription => null;
 }
 
 void main() {
