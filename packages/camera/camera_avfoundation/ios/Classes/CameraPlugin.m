@@ -308,12 +308,14 @@
     NSString *resolutionAspectRatio = createMethodCall.arguments[@"resolutionAspectRatio"];
     NSNumber *enableAudio = createMethodCall.arguments[@"enableAudio"];
     NSNumber *enableLivePhoto = createMethodCall.arguments[@"enableLivePhoto"];
+    NSString *secondCameraName = createMethodCall.arguments[@"secondCameraName"];
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
                                resolutionAspectRatio:resolutionAspectRatio
                                          enableAudio:[enableAudio boolValue]
                                      enableLivePhoto:[enableLivePhoto boolValue]
+                                    secondCameraName:secondCameraName
                                          orientation:[[UIDevice currentDevice] orientation]
                                  captureSessionQueue:strongSelf.captureSessionQueue
                                                error:&error];

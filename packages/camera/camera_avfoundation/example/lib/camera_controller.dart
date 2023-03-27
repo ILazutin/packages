@@ -209,9 +209,9 @@ class CameraController extends ValueNotifier<CameraValue> {
   int get cameraId => _cameraId;
 
   /// Initializes the camera on the device.
-  Future<void> initialize() => _initializeWithDescription(description);
+  Future<void> initialize([CameraDescription? secondCameraDescription]) => _initializeWithDescription(description, secondCameraDescription);
 
-  Future<void> _initializeWithDescription(CameraDescription description) async {
+  Future<void> _initializeWithDescription(CameraDescription description, [CameraDescription? secondCameraDescription]) async {
     final Completer<CameraInitializedEvent> initializeCompleter =
         Completer<CameraInitializedEvent>();
 
@@ -229,6 +229,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       ResolutionAspectRatio.RATIO_16_9,
       enableAudio: enableAudio,
       enableLivePhoto: true,
+      secondCameraDescription: secondCameraDescription
     );
 
     CameraPlatform.instance

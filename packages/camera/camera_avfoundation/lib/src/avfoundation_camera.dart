@@ -117,6 +117,7 @@ class AVFoundationCamera extends CameraPlatform {
         'enableAudio': enableAudio,
         'enableLivePhoto': enableLivePhoto,
         'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds,
+        'secondCameraName': secondCameraDescription?.name ?? ''
       });
 
       return reply!['cameraId']! as int;

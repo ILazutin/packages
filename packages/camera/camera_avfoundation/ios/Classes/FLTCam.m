@@ -48,6 +48,7 @@
 @property(readonly, nonatomic) AVCaptureSession *audioCaptureSession;
 
 @property(readonly, nonatomic) AVCaptureInput *captureVideoInput;
+@property(readonly, nonatomic) AVCaptureInput *secondCameraInput;
 /// Tracks the latest pixel buffer sent from AVFoundation's sample buffer delegate callback.
 /// Used to deliver the latest pixel buffer to the flutter engine via the `copyPixelBuffer` API.
 @property(readwrite, nonatomic) CVPixelBufferRef latestPixelBuffer;
@@ -57,6 +58,7 @@
 @property(strong, nonatomic) AVAssetWriterInput *audioWriterInput;
 @property(strong, nonatomic) AVAssetWriterInputPixelBufferAdaptor *assetWriterPixelBufferAdaptor;
 @property(strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
+@property(strong, nonatomic) AVCapturePhotoOutput *secondCameraOutput;
 @property(strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
 @property(strong, nonatomic) NSString *videoRecordingPath;
 @property(assign, nonatomic) BOOL isRecording;
@@ -64,6 +66,8 @@
 @property(assign, nonatomic) BOOL videoIsDisconnected;
 @property(assign, nonatomic) BOOL audioIsDisconnected;
 @property(assign, nonatomic) BOOL isAudioSetup;
+@property(strong, nonatomic) NSArray *mainCameraCaptures;
+@property(strong, nonatomic) NSArray *secondCameraCaptures;
 
 /// Number of frames currently pending processing.
 @property(assign, nonatomic) int streamingPendingFramesCount;
@@ -98,19 +102,59 @@ NSString *const errorMethod = @"error";
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                    enableLivePhoto:(BOOL)enableLivePhoto
+                  secondCameraName:(NSString *)secondCameraName
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue
                              error:(NSError **)error {
-  return [self initWithCameraName:cameraName
-                 resolutionPreset:resolutionPreset
-            resolutionAspectRatio:resolutionAspectRatio
-                      enableAudio:enableAudio
-                  enableLivePhoto:enableLivePhoto
-                      orientation:orientation
-              videoCaptureSession:[[AVCaptureSession alloc] init]
-              audioCaptureSession:[[AVCaptureSession alloc] init]
-              captureSessionQueue:captureSessionQueue
-                            error:error];
+  if (@available(iOS 13.0, *)) {
+    if ([secondCameraName  isEqual: @""]) {
+      return [self initWithCameraName:cameraName
+                     resolutionPreset:resolutionPreset
+                resolutionAspectRatio:resolutionAspectRatio
+                          enableAudio:enableAudio
+                      enableLivePhoto:enableLivePhoto
+                     secondCameraName:secondCameraName
+                          orientation:orientation
+                  videoCaptureSession:[[AVCaptureSession alloc] init]
+                  audioCaptureSession:[[AVCaptureSession alloc] init]
+                  captureSessionQueue:captureSessionQueue
+                                error:error];
+    } else {
+      return [self initWithCameraName:cameraName
+                     resolutionPreset:resolutionPreset
+                resolutionAspectRatio:resolutionAspectRatio
+                          enableAudio:enableAudio
+                      enableLivePhoto:enableLivePhoto
+                     secondCameraName:secondCameraName
+                          orientation:orientation
+                  videoCaptureSession:[[AVCaptureMultiCamSession alloc] init]
+                  audioCaptureSession:[[AVCaptureSession alloc] init]
+                  captureSessionQueue:captureSessionQueue
+                                error:error];
+    }
+  } else {
+    if (![secondCameraName  isEqual: @""]) {
+      NSError *error =
+          [NSError errorWithDomain:NSCocoaErrorDomain
+                              code:NSURLErrorUnknown
+                          userInfo:@{
+                            NSLocalizedDescriptionKey :
+                                @"Multicamera sessions available on iOS 13 and higher"
+                          }];
+      @throw error;
+    }
+    return [self initWithCameraName:cameraName
+                   resolutionPreset:resolutionPreset
+              resolutionAspectRatio:resolutionAspectRatio
+                        enableAudio:enableAudio
+                    enableLivePhoto:enableLivePhoto
+                   secondCameraName:secondCameraName
+                        orientation:orientation
+                videoCaptureSession:[[AVCaptureSession alloc] init]
+                audioCaptureSession:[[AVCaptureSession alloc] init]
+                captureSessionQueue:captureSessionQueue
+                              error:error];
+  }
 }
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
@@ -118,6 +162,7 @@ NSString *const errorMethod = @"error";
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                    enableLivePhoto:(BOOL)enableLivePhoto
+                  secondCameraName:(NSString *)secondCameraName
                        orientation:(UIDeviceOrientation)orientation
                videoCaptureSession:(AVCaptureSession *)videoCaptureSession
                audioCaptureSession:(AVCaptureSession *)audioCaptureSession
@@ -145,6 +190,9 @@ NSString *const errorMethod = @"error";
   _audioCaptureSession = audioCaptureSession;
   _captureDevice = [AVCaptureDevice deviceWithUniqueID:cameraName];
   _flashMode = _captureDevice.hasFlash ? FLTFlashModeAuto : FLTFlashModeOff;
+  if (![secondCameraName  isEqual: @""]) {
+    _secondCameraDevice = [AVCaptureDevice deviceWithUniqueID:secondCameraName];
+  }
   _exposureMode = FLTExposureModeAuto;
   _focusMode = FLTFocusModeAuto;
   _lockedCaptureOrientation = UIDeviceOrientationUnknown;
@@ -163,13 +211,27 @@ NSString *const errorMethod = @"error";
     *error = localError;
     return nil;
   }
-
+  
   [_videoCaptureSession addInputWithNoConnections:_captureVideoInput];
   [_videoCaptureSession addOutputWithNoConnections:_captureVideoOutput];
   [_videoCaptureSession addConnection:connection];
+  
+  if (_secondCameraDevice != nil) {
+    AVCaptureConnection *secondConnection = [self createSecondConnection:&localError];
+    if (localError) {
+      *error = localError;
+      return nil;
+    }
+    
+    [_videoCaptureSession addInputWithNoConnections:_secondCameraInput];
+    [_videoCaptureSession addOutputWithNoConnections:_secondCameraOutput];
+    [_videoCaptureSession addConnection:secondConnection];
+  }
 
-  if (_enableLivePhoto) {
+  if (_enableLivePhoto && _secondCameraDevice == nil) {
     _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+  } else if (_secondCameraDevice != nil) {
+    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
   }
   
   _capturePhotoOutput = [AVCapturePhotoOutput new];
@@ -206,9 +268,32 @@ NSString *const errorMethod = @"error";
 
   // Setup video capture connection.
   AVCaptureConnection *connection =
-      [AVCaptureConnection connectionWithInputPorts:_captureVideoInput.ports
+      [AVCaptureConnection connectionWithInputPorts:[NSArray arrayWithObject:_captureVideoInput.ports.firstObject]
                                              output:_captureVideoOutput];
   if ([_captureDevice position] == AVCaptureDevicePositionFront) {
+    connection.videoMirrored = YES;
+  }
+
+  return connection;
+}
+
+- (AVCaptureConnection *)createSecondConnection:(NSError **)error {
+  // Setup video capture input.
+  _secondCameraInput = [AVCaptureDeviceInput deviceInputWithDevice:_secondCameraDevice error:error];
+
+  if (*error) {
+    return nil;
+  }
+
+  // Setup video capture output.
+  _secondCameraOutput = [AVCapturePhotoOutput new];
+  [_secondCameraOutput setHighResolutionCaptureEnabled:YES];
+
+  // Setup video capture connection.
+  AVCaptureConnection *connection =
+      [AVCaptureConnection connectionWithInputPorts: [NSArray arrayWithObject:_secondCameraInput.ports.firstObject]
+                                             output:_secondCameraOutput];
+  if ([_secondCameraDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
   }
 
@@ -266,6 +351,11 @@ NSString *const errorMethod = @"error";
 }
 
 - (void)captureToFile:(FLTThreadSafeFlutterResult *)result {
+  [self captureToFileFromMainCamera:result];
+  [self captureToFileFromSecondCamera:result];
+}
+
+- (void)captureToFileFromMainCamera:(FLTThreadSafeFlutterResult *)result {
   AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
 
   NSError *error;
@@ -285,7 +375,7 @@ NSString *const errorMethod = @"error";
     settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
   }
   
-  if (_resolutionPreset == FLTResolutionPresetMax) {
+  if (_resolutionPreset == FLTResolutionPresetMax || _secondCameraDevice != nil) {
     [settings setHighResolutionPhotoEnabled:YES];
   }
 
@@ -306,7 +396,7 @@ NSString *const errorMethod = @"error";
   FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
            initWithPath:path
                 ioQueue:self.photoIOQueue
-        enableLivePhoto:self.enableLivePhoto
+        enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
       completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
@@ -321,7 +411,12 @@ NSString *const errorMethod = @"error";
           [result sendError:error];
         } else {
           NSAssert(path, @"Path must not be nil if no error.");
-          [result sendSuccessWithData:paths];
+          self.mainCameraCaptures = paths;
+          if (self.secondCameraDevice == nil) {
+            [result sendSuccessWithData:paths];
+          } else if (self.secondCameraCaptures != nil) {
+            [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+          }
         }
       }];
 
@@ -329,6 +424,55 @@ NSString *const errorMethod = @"error";
            @"save photo delegate references must be updated on the capture session queue");
   self.inProgressSavePhotoDelegates[@(settings.uniqueID)] = savePhotoDelegate;
   [self.capturePhotoOutput capturePhotoWithSettings:settings delegate:savePhotoDelegate];
+}
+
+- (void)captureToFileFromSecondCamera:(FLTThreadSafeFlutterResult *)result {
+  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
+
+  [settings setHighResolutionPhotoEnabled:YES];
+  [settings setFlashMode:AVCaptureFlashModeOff];
+  
+  NSError *error;
+  NSString *path = [self getTemporaryFilePathWithExtension:@"jpg"
+                                                 subfolder:@"pictures"
+                                                    prefix:@"CAP_"
+                                                     error:error];
+  if (error) {
+    [result sendError:error];
+    return;
+  }
+
+  __weak typeof(self) weakSelf = self;
+  FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
+           initWithPath:path
+                ioQueue:self.photoIOQueue
+        enableLivePhoto:false
+      completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        dispatch_async(strongSelf.captureSessionQueue, ^{
+          // cannot use the outter `strongSelf`
+          typeof(self) strongSelf = weakSelf;
+          if (!strongSelf) return;
+          [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
+        });
+
+        if (error) {
+          [result sendError:error];
+        } else {
+          NSAssert(path, @"Path must not be nil if no error.");
+          self.secondCameraCaptures = paths;
+          if (self.mainCameraCaptures != nil)
+          {
+            [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:paths]];
+          }
+        }
+      }];
+
+  NSAssert(dispatch_get_specific(FLTCaptureSessionQueueSpecific),
+           @"save photo delegate references must be updated on the capture session queue");
+  self.inProgressSavePhotoDelegates[@(settings.uniqueID)] = savePhotoDelegate;
+  [self.secondCameraOutput capturePhotoWithSettings:settings delegate:savePhotoDelegate];
 }
 
 - (AVCaptureVideoOrientation)getVideoOrientationForDeviceOrientation:
@@ -378,8 +522,9 @@ NSString *const errorMethod = @"error";
 
 - (void)setCaptureSessionPreset:(FLTResolutionPreset)resolutionPreset
           resolutionAspectRatio:(FLTResolutionAspectRatio)resolutionAspectRatio {
-  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+  AVCaptureSessionPreset sessionPreset;
+  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3 || _secondCameraDevice != nil) {
+    sessionPreset = AVCaptureSessionPresetPhoto;
     _previewSize = CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
                         _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
   } else {
@@ -387,12 +532,12 @@ NSString *const errorMethod = @"error";
       case FLTResolutionPresetMax:
       case FLTResolutionPresetUltraHigh:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
+          sessionPreset = AVCaptureSessionPreset3840x2160;
           _previewSize = CGSizeMake(3840, 2160);
           break;
         }
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPresetHigh;
+          sessionPreset = AVCaptureSessionPresetHigh;
           _previewSize =
               CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
                         _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
@@ -400,32 +545,34 @@ NSString *const errorMethod = @"error";
         }
       case FLTResolutionPresetVeryHigh:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1920x1080;
+          sessionPreset = AVCaptureSessionPreset1920x1080;
           _previewSize = CGSizeMake(1920, 1080);
           break;
         }
       case FLTResolutionPresetHigh:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset1280x720;
+          sessionPreset = AVCaptureSessionPreset1280x720;
           _previewSize = CGSizeMake(1280, 720);
           break;
         }
       case FLTResolutionPresetMedium:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset640x480;
+          sessionPreset = AVCaptureSessionPreset640x480;
           _previewSize = CGSizeMake(640, 480);
           break;
         }
       case FLTResolutionPresetLow:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPreset352x288]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPreset352x288;
+          sessionPreset = AVCaptureSessionPreset352x288;
           _previewSize = CGSizeMake(352, 288);
           break;
         }
       default:
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetLow]) {
-          _videoCaptureSession.sessionPreset = AVCaptureSessionPresetLow;
+          sessionPreset = AVCaptureSessionPresetLow;
           _previewSize = CGSizeMake(352, 288);
+        } else if (_secondCameraDevice != nil) {
+          sessionPreset = AVCaptureSessionPresetInputPriority;
         } else {
           NSError *error =
               [NSError errorWithDomain:NSCocoaErrorDomain
@@ -438,8 +585,10 @@ NSString *const errorMethod = @"error";
         }
     }
   }
-  if (_enableLivePhoto) {
+  if (_enableLivePhoto && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
     _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+  } else if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+    _videoCaptureSession.sessionPreset = sessionPreset;
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
 }

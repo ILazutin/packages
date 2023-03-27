@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface FLTCam : NSObject <FlutterTexture>
 
 @property(readonly, nonatomic) AVCaptureDevice *captureDevice;
+@property(readonly, nonatomic) AVCaptureDevice *secondCameraDevice;
 @property(readonly, nonatomic) CGSize previewSize;
 @property(assign, nonatomic) BOOL isPreviewPaused;
 @property(nonatomic, copy) void (^onFrameAvailable)(void);
@@ -45,6 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                    enableLivePhoto:(BOOL)enableLivePhoto
+                  secondCameraName:(NSString *)secondCameraName
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue
                              error:(NSError **)error;
