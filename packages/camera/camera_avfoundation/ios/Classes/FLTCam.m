@@ -237,9 +237,9 @@ NSString *const errorMethod = @"error";
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
   [_videoCaptureSession addOutput:_capturePhotoOutput];
-  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
-    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
-  }
+//  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
+//    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+//  }
 
   _motionManager = [[CMMotionManager alloc] init];
   [_motionManager startAccelerometerUpdates];
@@ -248,7 +248,7 @@ NSString *const errorMethod = @"error";
           resolutionAspectRatio:_resolutionAspectRatio];
   [self updateOrientation];
 
-  if (_secondCameraDevice != nil && _enableLivePhoto) {
+  if (_enableLivePhoto) {
     _livePhotoMovieFps = 30;
     _livePhotoBuffer = [[FixedSizeQueue alloc] initWithSize:_livePhotoMovieFps * _livePhotoMaxDuration / 1000];
   }
@@ -376,13 +376,13 @@ NSString *const errorMethod = @"error";
     }
   }
 
-  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
-    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
-    
-    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{(NSString *)AVVideoCodecKey : AVVideoCodecTypeHEVC}];
-    
-    settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
-  }
+//  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
+//    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+//
+//    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{(NSString *)AVVideoCodecKey : AVVideoCodecTypeHEVC}];
+//
+//    settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
+//  }
   
   if (_resolutionPreset == FLTResolutionPresetMax || _secondCameraDevice != nil) {
     [settings setHighResolutionPhotoEnabled:YES];
@@ -421,7 +421,7 @@ NSString *const errorMethod = @"error";
         } else {
           NSAssert(path, @"Path must not be nil if no error.");
           self.mainCameraCaptures = paths;
-          if (self.enableLivePhoto && self.secondCameraDevice != nil) {
+          if (self.enableLivePhoto) {
             self.livePhotoMovieSaveInProgress = true;
             [self saveLivePhotoMovieFromBuffer:videoPath
                              withCallbackBlock:^(BOOL success){
@@ -707,9 +707,10 @@ NSString *const errorMethod = @"error";
         }
     }
   }
-  if (_enableLivePhoto && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
-  } else if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+//  if (_enableLivePhoto && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+//    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+//  } else
+  if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
     _videoCaptureSession.sessionPreset = sessionPreset;
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
@@ -813,7 +814,7 @@ NSString *const errorMethod = @"error";
       });
     }
   }
-  if (_enableLivePhoto && _secondCameraDevice != nil && !_livePhotoMovieSaveInProgress) {
+  if (_enableLivePhoto && !_livePhotoMovieSaveInProgress) {
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     // Get pixel buffer info
     CVPixelBufferLockBaseAddress(pixelBuffer, 0);
