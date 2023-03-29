@@ -158,12 +158,16 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
 
               @Override
               public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
-                camera.sendError(result, errorCode, errorMessage, errorDetails);
+                if (mainCameraFiles.size() > 0) {
+                  camera.sendTakePictureResult(result, mainCameraFiles);
+                }
               }
 
               @Override
               public void onCameraErrorEvent(@Nullable String description) {
-                camera.sendCameraErrorEvent(description);
+                if (mainCameraFiles.size() > 0) {
+                  camera.sendTakePictureResult(result, mainCameraFiles);
+                }
               }
             });
           }

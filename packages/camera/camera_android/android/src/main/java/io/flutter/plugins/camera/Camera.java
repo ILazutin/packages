@@ -751,10 +751,12 @@ class Camera
 
         @Override
         public void onError(String errorCode, String errorMessage) {
+          List<String> files = new ArrayList<>();
+          files.add(captureFile.getAbsolutePath());
           if (takePictureCallback != null) {
-            takePictureCallback.onError(errorCode, errorMessage, null);
+            takePictureCallback.onComplete(files);
           } else {
-            dartMessenger.error(flutterResult, errorCode, errorMessage, null);
+            dartMessenger.finish(flutterResult, files);
           }
         }
       }), livePhotoDelayed);
