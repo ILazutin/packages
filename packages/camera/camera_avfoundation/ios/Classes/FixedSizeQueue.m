@@ -32,9 +32,6 @@
       headObject = nil;
     }
   }
-//  NSValue *value = [[NSValue alloc] initWithBytes:CFBridgingRetain(anObject) objCType:@encode(NSData)];
-//  [_buffer addObject:value];
-//  value = nil;
 
   [_buffer addObject:anObject];
 }

@@ -549,30 +549,7 @@ NSString *const errorMethod = @"error";
     if(writerInput.readyForMoreMediaData){
       
       presentTime = CMTimeMake(i, (int) _livePhotoMovieFps);
-//      CIImage *image = [_livePhotoBuffer dequeue];
-//      CGImageRef image = (__bridge CGImageRef)([_livePhotoBuffer dequeue]);
       buffer = CFBridgingRetain([_livePhotoBuffer dequeue]);
-//      NSMutableDictionary *data = [_livePhotoBuffer dequeue];
-//      NSMutableDictionary *imageBuffer = [NSMutableDictionary dictionary];
-//      imageBuffer[@"width"] = [NSNumber numberWithUnsignedLong:imageWidth];
-//      imageBuffer[@"height"] = [NSNumber numberWithUnsignedLong:imageHeight];
-//      imageBuffer[@"format"] = @(_videoFormat);
-//      imageBuffer[@"planes"] = planes;
-//      imageBuffer[@"lensAperture"] = [NSNumber numberWithFloat:[_captureDevice lensAperture]];
-//      Float64 exposureDuration = CMTimeGetSeconds([_captureDevice exposureDuration]);
-//      Float64 nsExposureDuration = 1000000000 * exposureDuration;
-//      imageBuffer[@"sensorExposureTime"] = [NSNumber numberWithInt:nsExposureDuration];
-//      imageBuffer[@"sensorSensitivity"] = [NSNumber numberWithFloat:[_captureDevice ISO]];
-//
-//      [CVPixelBufferCreateWithBytes(NULL, [data valueForKey:@"width"], [data valueForKey:@"height"], [data valueForKey:@"format"], <#void * _Nonnull baseAddress#>, <#size_t bytesPerRow#>, NULL, NULL, NULL, &buffer)]
-//
-//      if (image == nil) {
-//        buffer = nil;
-//      } else {
-////        buffer = image.pixelBuffer;
-//        buffer = [self pixelBufferFromCGImage:image size:_previewSize];
-////        CGImageRelease(image);
-//      }
       
       if (buffer != nil) {
         BOOL appendSuccess = [self appendToAdapter:adaptor
@@ -608,38 +585,6 @@ NSString *const errorMethod = @"error";
   }
 }
 
-- (CVPixelBufferRef) pixelBufferFromCGImage:(CGImageRef) image
-                                       size:(CGSize) imageSize {
-
-    NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-                             [NSNumber numberWithBool:YES], kCVPixelBufferCGImageCompatibilityKey,
-                             [NSNumber numberWithBool:YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
-                             nil];
-
-    CVPixelBufferRef pxbuffer = NULL;
-    CVPixelBufferCreate(kCFAllocatorDefault, CGImageGetWidth(image),
-                        CGImageGetHeight(image), kCVPixelFormatType_32ARGB, (__bridge CFDictionaryRef) options,
-                        &pxbuffer);
-    CVPixelBufferLockBaseAddress(pxbuffer, 0);
-
-    void *pxdata = CVPixelBufferGetBaseAddress(pxbuffer);
-
-    CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(pxdata, CGImageGetWidth(image),
-                                                 CGImageGetHeight(image), 8, CVPixelBufferGetBytesPerRow(pxbuffer), rgbColorSpace,
-                                                 (int)kCGImageAlphaNoneSkipFirst);
-
-
-    CGContextConcatCTM(context, CGAffineTransformMakeRotation(0));
-
-    CGContextDrawImage(context, CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image)), image);
-    CGColorSpaceRelease(rgbColorSpace);
-    CGContextRelease(context);
-    CVPixelBufferUnlockBaseAddress(pxbuffer, 0);
-
-    return pxbuffer;
-}
-
 - (BOOL)appendToAdapter:(AVAssetWriterInputPixelBufferAdaptor*)adaptor
            pixelBuffer:(CVPixelBufferRef)buffer
                 atTime:(CMTime)presentTime
@@ -650,19 +595,6 @@ NSString *const errorMethod = @"error";
     }
 
     return [adaptor appendPixelBuffer:buffer withPresentationTime:presentTime];
-}
-
-- (CGImageRef) createCGImage:(CVPixelBufferRef)buffer {
-  CIContext *ciContext = [CIContext contextWithOptions:nil];
-  CIImage *ciImage = [CIImage imageWithCVPixelBuffer:buffer];
-  CGImageRef videoImage = [ciContext
-                                   createCGImage:ciImage
-                                   fromRect:CGRectMake(0, 0,
-                                                       CVPixelBufferGetWidth(buffer),
-                                                       CVPixelBufferGetHeight(buffer))];
-  CFRelease(CFBridgingRetain(ciContext));
-  CFRelease(CFBridgingRetain(ciImage));
-  return videoImage;
 }
 
 - (AVCaptureVideoOrientation)getVideoOrientationForDeviceOrientation:
@@ -883,39 +815,22 @@ NSString *const errorMethod = @"error";
   }
   if (_enableLivePhoto && _secondCameraDevice != nil && !_livePhotoMovieSaveInProgress) {
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-//    CGImageRef cgImage = [self createCGImage:pixelBuffer];
-//    CIImage *ciImage = [[CIImage alloc] initWithCVPixelBuffer:pixelBuffer];
-//    NSData *bytes = [[NSData alloc] initWithBytesNoCopy:CFBridgingRetain(ciImage) length:CVPixelBufferGetDataSize(ciImage.pixelBuffer)];
-//    NSData *bytes = UIImageJPEGRepresentation([[UIImage alloc] initWithCGImage:cgImage], 1);
     // Get pixel buffer info
-        CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-        int bufferWidth = (int)CVPixelBufferGetWidth(pixelBuffer);
-        int bufferHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
-        size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-        uint8_t *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-
-        // Copy the pixel buffer
-        CVPixelBufferRef pixelBufferCopy = NULL;
-        CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
-        CVPixelBufferLockBaseAddress(pixelBufferCopy, 0);
-        uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
-        memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
+    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+    int bufferWidth = (int)CVPixelBufferGetWidth(pixelBuffer);
+    int bufferHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+    uint8_t *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
+    
+    // Copy the pixel buffer
+    CVPixelBufferRef pixelBufferCopy = NULL;
+    CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
+    CVPixelBufferLockBaseAddress(pixelBufferCopy, 0);
+    uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
+    memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
     
-//    NSData *bytes = [[NSData alloc] initWithBytes:pixelBuffer length:CVPixelBufferGetDataSize(pixelBuffer)];
     [_livePhotoBuffer enqueue:CFBridgingRelease(pixelBufferCopy)];
-//    [_livePhotoBuffer enqueue:[self imageStreamingData:pixelBuffer]];
-//    [_livePhotoBuffer enqueue:CFBridgingRelease(pixelBuffer)];
-//    [_livePhotoBuffer enqueue:ciImage];
-//    CFRelease(cgImage);
-//    CFRelease(pixelBuffer);
-//    cgImage = nil;
-//    pixelBuffer = nil;
-//    CFRelease(CFBridgingRetain(bytes));
-//    bytes = nil;
-//    if (!_isRecording) {
-//      CFRelease(sampleBuffer);
-//    }
   }
   if (_isRecording && !_isRecordingPaused) {
     if (_videoWriter.status == AVAssetWriterStatusFailed) {
@@ -983,70 +898,6 @@ NSString *const errorMethod = @"error";
 
     CFRelease(sampleBuffer);
   }
-}
-
-- (NSMutableDictionary *)imageStreamingData:(CVPixelBufferRef)pixelBuffer {
-  // Must lock base address before accessing the pixel data
-  CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-
-  size_t imageWidth = CVPixelBufferGetWidth(pixelBuffer);
-  size_t imageHeight = CVPixelBufferGetHeight(pixelBuffer);
-
-  NSMutableArray *planes = [NSMutableArray array];
-
-  const Boolean isPlanar = CVPixelBufferIsPlanar(pixelBuffer);
-  size_t planeCount;
-  if (isPlanar) {
-    planeCount = CVPixelBufferGetPlaneCount(pixelBuffer);
-  } else {
-    planeCount = 1;
-  }
-
-  for (int i = 0; i < planeCount; i++) {
-    void *planeAddress;
-    size_t bytesPerRow;
-    size_t height;
-    size_t width;
-
-    if (isPlanar) {
-      planeAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, i);
-      bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, i);
-      height = CVPixelBufferGetHeightOfPlane(pixelBuffer, i);
-      width = CVPixelBufferGetWidthOfPlane(pixelBuffer, i);
-    } else {
-      planeAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-      bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-      height = CVPixelBufferGetHeight(pixelBuffer);
-      width = CVPixelBufferGetWidth(pixelBuffer);
-    }
-
-    NSNumber *length = @(bytesPerRow * height);
-    NSData *bytes = [NSData dataWithBytes:planeAddress length:length.unsignedIntegerValue];
-
-    NSMutableDictionary *planeBuffer = [NSMutableDictionary dictionary];
-    planeBuffer[@"bytesPerRow"] = @(bytesPerRow);
-    planeBuffer[@"width"] = @(width);
-    planeBuffer[@"height"] = @(height);
-    planeBuffer[@"bytes"] = [FlutterStandardTypedData typedDataWithBytes:bytes];
-
-    [planes addObject:planeBuffer];
-  }
-  // Lock the base address before accessing pixel data, and unlock it afterwards.
-  // Done accessing the `pixelBuffer` at this point.
-  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-
-  NSMutableDictionary *imageBuffer = [NSMutableDictionary dictionary];
-  imageBuffer[@"width"] = [NSNumber numberWithUnsignedLong:imageWidth];
-  imageBuffer[@"height"] = [NSNumber numberWithUnsignedLong:imageHeight];
-  imageBuffer[@"format"] = @(_videoFormat);
-  imageBuffer[@"planes"] = planes;
-  imageBuffer[@"lensAperture"] = [NSNumber numberWithFloat:[_captureDevice lensAperture]];
-  Float64 exposureDuration = CMTimeGetSeconds([_captureDevice exposureDuration]);
-  Float64 nsExposureDuration = 1000000000 * exposureDuration;
-  imageBuffer[@"sensorExposureTime"] = [NSNumber numberWithInt:nsExposureDuration];
-  imageBuffer[@"sensorSensitivity"] = [NSNumber numberWithFloat:[_captureDevice ISO]];
-
-  return imageBuffer;
 }
 
 - (CMSampleBufferRef)adjustTime:(CMSampleBufferRef)sample by:(CMTime)offset CF_RETURNS_RETAINED {
