@@ -46,6 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
              resolutionAspectRatio:(NSString *)resolutionAspectRatio
                        enableAudio:(BOOL)enableAudio
                    enableLivePhoto:(BOOL)enableLivePhoto
+              livePhotoMaxDuration:(NSUInteger)livePhotoMaxDuration
                   secondCameraName:(NSString *)secondCameraName
                        orientation:(UIDeviceOrientation)orientation
                captureSessionQueue:(dispatch_queue_t)captureSessionQueue

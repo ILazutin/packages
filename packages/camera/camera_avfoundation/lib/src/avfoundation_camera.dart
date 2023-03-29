@@ -116,7 +116,8 @@ class AVFoundationCamera extends CameraPlatform {
             resolutionAspectRatio ?? ResolutionAspectRatio.RATIO_16_9),
         'enableAudio': enableAudio,
         'enableLivePhoto': enableLivePhoto,
-        'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds,
+        'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds ??
+            const Duration(milliseconds: 3000),
         'secondCameraName': secondCameraDescription?.name ?? ''
       });
 
