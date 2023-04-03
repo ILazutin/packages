@@ -664,7 +664,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     try {
       await cameraController.initialize(_cameras.firstWhere(
           (CameraDescription element) =>
-              element.lensDirection == CameraLensDirection.front));
+              element.lensDirection != cameraDescription.lensDirection));
       await Future.wait(<Future<Object?>>[
         // The exposure mode is currently not supported on the web.
         ...!kIsWeb

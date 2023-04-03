@@ -83,7 +83,6 @@ didFinishProcessingLivePhotoToMovieFileAtURL:(NSURL *)outputFileURL
   _livePhotoMovie = outputFileURL.path;
   
   self.completionHandler([NSArray arrayWithObjects: self.path, _livePhotoMovie, nil], nil);
-  
 }
 
 @end

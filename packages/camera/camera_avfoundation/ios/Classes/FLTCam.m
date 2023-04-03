@@ -7,8 +7,10 @@
 #import "FLTSavePhotoDelegate.h"
 #import "QueueUtils.h"
 #import "FixedSizeQueue.h"
+#import "RenderUtilities.h"
 
 @import CoreMotion;
+@import Accelerate;
 #import <libkern/OSAtomic.h>
 
 @implementation FLTImageStreamHandler
@@ -92,10 +94,13 @@
 /// Videos are written to disk by `videoAdaptor` on an internal queue managed by AVFoundation.
 @property(strong, nonatomic) dispatch_queue_t photoIOQueue;
 @property(assign, nonatomic) UIDeviceOrientation deviceOrientation;
+@property(assign, nonatomic) BOOL livePhotoCustomImpl;
 @property(strong, nonatomic) FixedSizeQueue *livePhotoBuffer;
 @property(assign, nonatomic) NSUInteger livePhotoMaxDuration;
 @property(assign, nonatomic) NSInteger livePhotoMovieFps;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveInProgress;
+//@property(readonly, nonatomic) CIContext *ciContext;
+@property(readonly, nonatomic) RenderUtilities *renderUtilities;
 @end
 
 @implementation FLTCam
@@ -128,7 +133,7 @@ NSString *const errorMethod = @"error";
                                 error:error];
     }
   }
-
+  
   if (![secondCameraName isEqual: @""]) {
     NSError *error =
     [NSError errorWithDomain:NSCocoaErrorDomain
@@ -180,11 +185,12 @@ NSString *const errorMethod = @"error";
   }
   _enableAudio = enableAudio;
   _enableLivePhoto = enableLivePhoto;
+  _livePhotoCustomImpl = true;
   _livePhotoMaxDuration = livePhotoMaxDuration;
   _livePhotoMovieSaveInProgress = false;
   _captureSessionQueue = captureSessionQueue;
   _pixelBufferSynchronizationQueue =
-      dispatch_queue_create("io.flutter.camera.pixelBufferSynchronizationQueue", NULL);
+  dispatch_queue_create("io.flutter.camera.pixelBufferSynchronizationQueue", NULL);
   _photoIOQueue = dispatch_queue_create("io.flutter.camera.photoIOQueue", NULL);
   _videoCaptureSession = videoCaptureSession;
   _audioCaptureSession = audioCaptureSession;
@@ -199,12 +205,15 @@ NSString *const errorMethod = @"error";
   _deviceOrientation = orientation;
   _videoFormat = kCVPixelFormatType_32BGRA;
   _inProgressSavePhotoDelegates = [NSMutableDictionary dictionary];
-
+//  _ciContext = [[CIContext alloc] init];
+  _renderUtilities = [[RenderUtilities alloc] init];
+//  CFRetain((__bridge CFTypeRef)(_ciContext));
+  
   // To limit memory consumption, limit the number of frames pending processing.
   // After some testing, 4 was determined to be the best maximum value.
   // https://github.com/flutter/plugins/pull/4520#discussion_r766335637
   _maxStreamingPendingFramesCount = 4;
-
+  
   NSError *localError = nil;
   AVCaptureConnection *connection = [self createConnection:&localError];
   if (localError) {
@@ -227,8 +236,8 @@ NSString *const errorMethod = @"error";
     [_videoCaptureSession addOutputWithNoConnections:_secondCameraOutput];
     [_videoCaptureSession addConnection:secondConnection];
   }
-
-  if (_enableLivePhoto && _secondCameraDevice == nil) {
+  
+  if (_enableLivePhoto && _secondCameraDevice == nil && _livePhotoCustomImpl) {
     _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
   } else if (_secondCameraDevice != nil) {
     _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
@@ -237,18 +246,18 @@ NSString *const errorMethod = @"error";
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
   [_videoCaptureSession addOutput:_capturePhotoOutput];
-//  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
-//    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
-//  }
-
+  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported && !_livePhotoCustomImpl) {
+    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+  }
+  
   _motionManager = [[CMMotionManager alloc] init];
   [_motionManager startAccelerometerUpdates];
-
+  
   [self setCaptureSessionPreset:_resolutionPreset
           resolutionAspectRatio:_resolutionAspectRatio];
   [self updateOrientation];
-
-  if (_enableLivePhoto) {
+  
+  if (_enableLivePhoto && _livePhotoCustomImpl) {
     _livePhotoMovieFps = 30;
     _livePhotoBuffer = [[FixedSizeQueue alloc] initWithSize:_livePhotoMovieFps * _livePhotoMaxDuration / 1000];
   }
@@ -259,49 +268,49 @@ NSString *const errorMethod = @"error";
 - (AVCaptureConnection *)createConnection:(NSError **)error {
   // Setup video capture input.
   _captureVideoInput = [AVCaptureDeviceInput deviceInputWithDevice:_captureDevice error:error];
-
+  
   if (*error) {
     return nil;
   }
-
+  
   // Setup video capture output.
   _captureVideoOutput = [AVCaptureVideoDataOutput new];
   _captureVideoOutput.videoSettings =
-      @{(NSString *)kCVPixelBufferPixelFormatTypeKey : @(_videoFormat)};
+  @{(NSString *)kCVPixelBufferPixelFormatTypeKey : @(_videoFormat)};
   [_captureVideoOutput setAlwaysDiscardsLateVideoFrames:YES];
   [_captureVideoOutput setSampleBufferDelegate:self queue:_captureSessionQueue];
-
+  
   // Setup video capture connection.
   AVCaptureConnection *connection =
-      [AVCaptureConnection connectionWithInputPorts:[NSArray arrayWithObject:_captureVideoInput.ports.firstObject]
-                                             output:_captureVideoOutput];
+  [AVCaptureConnection connectionWithInputPorts:[NSArray arrayWithObject:_captureVideoInput.ports.firstObject]
+                                         output:_captureVideoOutput];
   if ([_captureDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
   }
-
+  
   return connection;
 }
 
 - (AVCaptureConnection *)createSecondConnection:(NSError **)error {
   // Setup video capture input.
   _secondCameraInput = [AVCaptureDeviceInput deviceInputWithDevice:_secondCameraDevice error:error];
-
+  
   if (*error) {
     return nil;
   }
-
+  
   // Setup video capture output.
   _secondCameraOutput = [AVCapturePhotoOutput new];
   [_secondCameraOutput setHighResolutionCaptureEnabled:YES];
-
+  
   // Setup video capture connection.
   AVCaptureConnection *connection =
-      [AVCaptureConnection connectionWithInputPorts: [NSArray arrayWithObject:_secondCameraInput.ports.firstObject]
-                                             output:_secondCameraOutput];
+  [AVCaptureConnection connectionWithInputPorts: [NSArray arrayWithObject:_secondCameraInput.ports.firstObject]
+                                         output:_secondCameraOutput];
   if ([_secondCameraDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
   }
-
+  
   return connection;
 }
 
@@ -318,14 +327,14 @@ NSString *const errorMethod = @"error";
 - (void)setVideoFormat:(OSType)videoFormat {
   _videoFormat = videoFormat;
   _captureVideoOutput.videoSettings =
-      @{(NSString *)kCVPixelBufferPixelFormatTypeKey : @(videoFormat)};
+  @{(NSString *)kCVPixelBufferPixelFormatTypeKey : @(videoFormat)};
 }
 
 - (void)setDeviceOrientation:(UIDeviceOrientation)orientation {
   if (_deviceOrientation == orientation) {
     return;
   }
-
+  
   _deviceOrientation = orientation;
   [self updateOrientation];
 }
@@ -334,11 +343,11 @@ NSString *const errorMethod = @"error";
   if (_isRecording) {
     return;
   }
-
+  
   UIDeviceOrientation orientation = (_lockedCaptureOrientation != UIDeviceOrientationUnknown)
-                                        ? _lockedCaptureOrientation
-                                        : _deviceOrientation;
-
+  ? _lockedCaptureOrientation
+  : _deviceOrientation;
+  
   [self updateOrientation:orientation forCaptureOutput:_capturePhotoOutput];
   [self updateOrientation:orientation forCaptureOutput:_captureVideoOutput];
 }
@@ -348,7 +357,7 @@ NSString *const errorMethod = @"error";
   if (!captureOutput) {
     return;
   }
-
+  
   AVCaptureConnection *connection = [captureOutput connectionWithMediaType:AVMediaTypeVideo];
   if (connection && connection.isVideoOrientationSupported) {
     connection.videoOrientation = [self getVideoOrientationForDeviceOrientation:orientation];
@@ -367,27 +376,27 @@ NSString *const errorMethod = @"error";
   NSString *videoPath;
   if (_enableLivePhoto) {
     videoPath = [self getTemporaryFilePathWithExtension:@"mp4"
-                                                        subfolder:@"videos"
-                                                           prefix:@"REC_"
-                                                            error:error];
+                                              subfolder:@"videos"
+                                                 prefix:@"REC_"
+                                                  error:error];
     if (error) {
       [result sendError:error];
       return;
     }
   }
-
-//  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported) {
-//    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
-//
-//    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{(NSString *)AVVideoCodecKey : AVVideoCodecTypeHEVC}];
-//
-//    settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
-//  }
+  
+  if (_enableLivePhoto && _capturePhotoOutput.isLivePhotoCaptureSupported && !_livePhotoCustomImpl) {
+    _capturePhotoOutput.livePhotoCaptureEnabled = YES;
+    
+    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{(NSString *)AVVideoCodecKey : AVVideoCodecTypeHEVC}];
+    
+    settings.livePhotoMovieFileURL = [NSURL fileURLWithPath:videoPath];
+  }
   
   if (_resolutionPreset == FLTResolutionPresetMax || _secondCameraDevice != nil) {
     [settings setHighResolutionPhotoEnabled:YES];
   }
-
+  
   AVCaptureFlashMode avFlashMode = FLTGetAVCaptureFlashModeForFLTFlashMode(_flashMode);
   if (avFlashMode != -1) {
     [settings setFlashMode:avFlashMode];
@@ -400,51 +409,51 @@ NSString *const errorMethod = @"error";
     [result sendError:error];
     return;
   }
-
+  
   __weak typeof(self) weakSelf = self;
   FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
-           initWithPath:path
-                ioQueue:self.photoIOQueue
-        enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
-      completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        dispatch_async(strongSelf.captureSessionQueue, ^{
-          // cannot use the outter `strongSelf`
-          typeof(self) strongSelf = weakSelf;
-          if (!strongSelf) return;
-          [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
-        });
-
-        if (error) {
-          [result sendError:error];
-        } else {
-          NSAssert(path, @"Path must not be nil if no error.");
-          self.mainCameraCaptures = paths;
-          if (self.enableLivePhoto) {
-            self.livePhotoMovieSaveInProgress = true;
-            [self saveLivePhotoMovieFromBuffer:videoPath
-                             withCallbackBlock:^(BOOL success){
-              if (success) {
-                [self.mainCameraCaptures arrayByAddingObject:videoPath];
-              }
-              if (self.secondCameraDevice == nil) {
-                [result sendSuccessWithData:paths];
-              } else if (self.secondCameraCaptures != nil) {
-                [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
-              }
-            }];
-            self.livePhotoMovieSaveInProgress = false;
-          } else {
-            if (self.secondCameraDevice == nil) {
-              [result sendSuccessWithData:paths];
-            } else if (self.secondCameraCaptures != nil) {
-              [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
-            }
+                                             initWithPath:path
+                                             ioQueue:self.photoIOQueue
+                                             enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
+                                             completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
+    typeof(self) strongSelf = weakSelf;
+    if (!strongSelf) return;
+    dispatch_async(strongSelf.captureSessionQueue, ^{
+      // cannot use the outter `strongSelf`
+      typeof(self) strongSelf = weakSelf;
+      if (!strongSelf) return;
+      [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
+    });
+    
+    if (error) {
+      [result sendError:error];
+    } else {
+      NSAssert(path, @"Path must not be nil if no error.");
+      self.mainCameraCaptures = paths;
+      if (self.enableLivePhoto && self.livePhotoCustomImpl) {
+        self.livePhotoMovieSaveInProgress = true;
+        [self saveLivePhotoMovieFromBuffer:videoPath
+                         withCallbackBlock:^(BOOL success){
+          if (success) {
+            [self.mainCameraCaptures arrayByAddingObject:videoPath];
           }
+          if (self.secondCameraDevice == nil) {
+            [result sendSuccessWithData:paths];
+          } else if (self.secondCameraCaptures != nil) {
+            [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+          }
+        }];
+        self.livePhotoMovieSaveInProgress = false;
+      } else {
+        if (self.secondCameraDevice == nil) {
+          [result sendSuccessWithData:paths];
+        } else if (self.secondCameraCaptures != nil) {
+          [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
         }
-      }];
-
+      }
+    }
+  }];
+  
   NSAssert(dispatch_get_specific(FLTCaptureSessionQueueSpecific),
            @"save photo delegate references must be updated on the capture session queue");
   self.inProgressSavePhotoDelegates[@(settings.uniqueID)] = savePhotoDelegate;
@@ -453,7 +462,7 @@ NSString *const errorMethod = @"error";
 
 - (void)captureToFileFromSecondCamera:(FLTThreadSafeFlutterResult *)result {
   AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
-
+  
   [settings setHighResolutionPhotoEnabled:YES];
   [settings setFlashMode:AVCaptureFlashModeOff];
   
@@ -466,34 +475,34 @@ NSString *const errorMethod = @"error";
     [result sendError:error];
     return;
   }
-
+  
   __weak typeof(self) weakSelf = self;
   FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
-           initWithPath:path
-                ioQueue:self.photoIOQueue
-        enableLivePhoto:false
-      completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        dispatch_async(strongSelf.captureSessionQueue, ^{
-          // cannot use the outter `strongSelf`
-          typeof(self) strongSelf = weakSelf;
-          if (!strongSelf) return;
-          [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
-        });
-
-        if (error) {
-          [result sendError:error];
-        } else {
-          NSAssert(path, @"Path must not be nil if no error.");
-          self.secondCameraCaptures = paths;
-          if (self.mainCameraCaptures != nil)
-          {
-            [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:paths]];
-          }
-        }
-      }];
-
+                                             initWithPath:path
+                                             ioQueue:self.photoIOQueue
+                                             enableLivePhoto:false
+                                             completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
+    typeof(self) strongSelf = weakSelf;
+    if (!strongSelf) return;
+    dispatch_async(strongSelf.captureSessionQueue, ^{
+      // cannot use the outter `strongSelf`
+      typeof(self) strongSelf = weakSelf;
+      if (!strongSelf) return;
+      [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
+    });
+    
+    if (error) {
+      [result sendError:error];
+    } else {
+      NSAssert(path, @"Path must not be nil if no error.");
+      self.secondCameraCaptures = paths;
+      if (self.mainCameraCaptures != nil)
+      {
+        [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:paths]];
+      }
+    }
+  }];
+  
   NSAssert(dispatch_get_specific(FLTCaptureSessionQueueSpecific),
            @"save photo delegate references must be updated on the capture session queue");
   self.inProgressSavePhotoDelegates[@(settings.uniqueID)] = savePhotoDelegate;
@@ -509,40 +518,40 @@ NSString *const errorMethod = @"error";
                                                          fileType:AVFileTypeMPEG4
                                                             error:&error];
   if (error) {
-      if (callbackBlock) {
-        callbackBlock(NO);
-      }
+    if (callbackBlock) {
+      callbackBlock(NO);
+    }
   }
   NSParameterAssert(videoWriter);
-
+  
   NSDictionary *videoSettings = [_captureVideoOutput
-      recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4];
-
+                                 recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4];
+  
   [videoSettings setValue:AVVideoCodecTypeH264 forKey:AVVideoCodecKey];
-
+  
   NSMutableDictionary* compressionPropertiesDict = [NSMutableDictionary new];
   compressionPropertiesDict[AVVideoProfileLevelKey] = AVVideoProfileLevelH264High40;
   [videoSettings setValue:compressionPropertiesDict forKey:AVVideoCompressionPropertiesKey];
-
+  
   AVAssetWriterInput* writerInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
                                                                        outputSettings:videoSettings];
-
+  
   AVAssetWriterInputPixelBufferAdaptor *adaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:writerInput
-                               sourcePixelBufferAttributes:nil];
+                                                                                                                   sourcePixelBufferAttributes:nil];
   
   NSParameterAssert(writerInput);
   NSParameterAssert([videoWriter canAddInput:writerInput]);
   [videoWriter addInput:writerInput];
-
+  
   //Start a session:
   [videoWriter startWriting];
   [videoWriter startSessionAtSourceTime:kCMTimeZero];
-
+  
   CVPixelBufferRef buffer;
   CVPixelBufferPoolCreatePixelBuffer(NULL, adaptor.pixelBufferPool, &buffer);
-
+  
   CMTime presentTime = CMTimeMake(0, (int) _livePhotoMovieFps);
-
+  
   int i = 0;
   while (YES) {
     
@@ -586,19 +595,19 @@ NSString *const errorMethod = @"error";
 }
 
 - (BOOL)appendToAdapter:(AVAssetWriterInputPixelBufferAdaptor*)adaptor
-           pixelBuffer:(CVPixelBufferRef)buffer
-                atTime:(CMTime)presentTime
-             withInput:(AVAssetWriterInput*)writerInput
+            pixelBuffer:(CVPixelBufferRef)buffer
+                 atTime:(CMTime)presentTime
+              withInput:(AVAssetWriterInput*)writerInput
 {
-    while (!writerInput.readyForMoreMediaData) {
-        usleep(1);
-    }
-
-    return [adaptor appendPixelBuffer:buffer withPresentationTime:presentTime];
+  while (!writerInput.readyForMoreMediaData) {
+    usleep(1);
+  }
+  
+  return [adaptor appendPixelBuffer:buffer withPresentationTime:presentTime];
 }
 
 - (AVCaptureVideoOrientation)getVideoOrientationForDeviceOrientation:
-    (UIDeviceOrientation)deviceOrientation {
+(UIDeviceOrientation)deviceOrientation {
   if (deviceOrientation == UIDeviceOrientationPortrait) {
     return AVCaptureVideoOrientationPortrait;
   } else if (deviceOrientation == UIDeviceOrientationLandscapeLeft) {
@@ -621,13 +630,13 @@ NSString *const errorMethod = @"error";
                                          prefix:(NSString *)prefix
                                           error:(NSError *)error {
   NSString *docDir =
-      NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+  NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
   NSString *fileDir =
-      [[docDir stringByAppendingPathComponent:@"camera"] stringByAppendingPathComponent:subfolder];
+  [[docDir stringByAppendingPathComponent:@"camera"] stringByAppendingPathComponent:subfolder];
   NSString *fileName = [prefix stringByAppendingString:[[NSUUID UUID] UUIDString]];
   NSString *file =
-      [[fileDir stringByAppendingPathComponent:fileName] stringByAppendingPathExtension:extension];
-
+  [[fileDir stringByAppendingPathComponent:fileName] stringByAppendingPathExtension:extension];
+  
   NSFileManager *fm = [NSFileManager defaultManager];
   if (![fm fileExistsAtPath:fileDir]) {
     [[NSFileManager defaultManager] createDirectoryAtPath:fileDir
@@ -638,17 +647,17 @@ NSString *const errorMethod = @"error";
       return nil;
     }
   }
-
+  
   return file;
 }
 
 - (void)setCaptureSessionPreset:(FLTResolutionPreset)resolutionPreset
           resolutionAspectRatio:(FLTResolutionAspectRatio)resolutionAspectRatio {
   AVCaptureSessionPreset sessionPreset;
-  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3 || _secondCameraDevice != nil) {
+  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
     sessionPreset = AVCaptureSessionPresetPhoto;
     _previewSize = CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
-                        _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
+                              _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
   } else {
     switch (resolutionPreset) {
       case FLTResolutionPresetMax:
@@ -661,8 +670,8 @@ NSString *const errorMethod = @"error";
         if ([_videoCaptureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
           sessionPreset = AVCaptureSessionPresetHigh;
           _previewSize =
-              CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
-                        _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
+          CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
+                     _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
           break;
         }
       case FLTResolutionPresetVeryHigh:
@@ -695,34 +704,74 @@ NSString *const errorMethod = @"error";
           _previewSize = CGSizeMake(352, 288);
         } else if (_secondCameraDevice != nil) {
           sessionPreset = AVCaptureSessionPresetInputPriority;
+          _previewSize = CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
+                                    _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
         } else {
           NSError *error =
-              [NSError errorWithDomain:NSCocoaErrorDomain
-                                  code:NSURLErrorUnknown
-                              userInfo:@{
-                                NSLocalizedDescriptionKey :
-                                    @"No capture session available for current capture session."
-                              }];
+          [NSError errorWithDomain:NSCocoaErrorDomain
+                              code:NSURLErrorUnknown
+                          userInfo:@{
+            NSLocalizedDescriptionKey :
+              @"No capture session available for current capture session."
+          }];
           @throw error;
         }
     }
   }
-//  if (_enableLivePhoto && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
-//    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
-//  } else
-  if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
+    _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 3 / 4);
+  } else {
+    _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 9 / 16);
+  }
+  if (_enableLivePhoto && !_livePhotoCustomImpl && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
+  } else if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
     _videoCaptureSession.sessionPreset = sessionPreset;
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
 }
 
 - (void)captureOutput:(AVCaptureOutput *)output
-    didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
-           fromConnection:(AVCaptureConnection *)connection {
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
   if (output == _captureVideoOutput) {
-    CVPixelBufferRef newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    CVPixelBufferRef newBuffer = NULL;
+    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9) {
+      newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    } else {
+      CVPixelBufferRef tempBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+      CFRetain(tempBuffer);
+      
+      size_t sourceWidth = CVPixelBufferGetWidth(tempBuffer);
+      size_t sourceHeight = CVPixelBufferGetHeight(tempBuffer);
+      
+      size_t finalWidth = sourceWidth;
+      size_t finalHeight = sourceHeight * 3 / 4;
+      
+      newBuffer = [_renderUtilities scale:tempBuffer toSize:CGSizeMake(finalWidth, finalHeight)];
+      CFRelease(tempBuffer);
+    }
+//    CVPixelBufferRef newBuffer = [_renderUtilities createCroppedPixelBuffer:newBuffer1 croppingRect:cropRect];
+    //    size_t width = CVPixelBufferGetWidth(newBuffer);
+    //    size_t height = CVPixelBufferGetHeight(newBuffer);
+    //
+    //    if (width != _previewSize.width || height != _previewSize.height) {
+//    CVPixelBufferRef newBuffer = [self createCroppedPixelBufferBiPlanar:newBuffer1 croppingRect:CGRectMake(0, 0, _previewSize.width, _previewSize.height) scaleSize:CGSizeMake(_previewSize.width, _previewSize.height)];
+//    CVPixelBufferRef newBuffer = [self createCroppedPixelBufferCoreImage:newBuffer1 cropRect:aspectRect scaleSize:CGSizeMake(aspectRect.size.width, aspectRect.size.width) context:_ciContext];
+//    CVPixelBufferRef newBuffer = [self createCroppedPixelBuffer:newBuffer1 croppingRect:CGRectMake(0, 0, _previewSize.width, _previewSize.height) scaledSize:CGSizeMake(_previewSize.width, _previewSize.height)];
     CFRetain(newBuffer);
-
+//    CFRelease(newBuffer1);
+    
+    
+//    CVPixelBufferRef newBuffer = [self scalePixelBufferToAspectRatioV3:CMSampleBufferGetImageBuffer(sampleBuffer)];
+//    CFRetain(newBuffer);
+    
+//    CVPixelBufferRef newBuffer = [self scalePixelBufferToAspectRatioV2:newBuffer1];
+    //      CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    //
+//    CFRetain(newBuffer);
+//    CFRelease(newBuffer1);
+    
     __block CVPixelBufferRef previousPixelBuffer = nil;
     // Use `dispatch_sync` to avoid unnecessary context switch under common non-contest scenarios;
     // Under rare contest scenarios, it will not block for too long since the critical section is
@@ -751,12 +800,12 @@ NSString *const errorMethod = @"error";
       CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
       // Must lock base address before accessing the pixel data
       CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-
+      
       size_t imageWidth = CVPixelBufferGetWidth(pixelBuffer);
       size_t imageHeight = CVPixelBufferGetHeight(pixelBuffer);
-
+      
       NSMutableArray *planes = [NSMutableArray array];
-
+      
       const Boolean isPlanar = CVPixelBufferIsPlanar(pixelBuffer);
       size_t planeCount;
       if (isPlanar) {
@@ -764,13 +813,13 @@ NSString *const errorMethod = @"error";
       } else {
         planeCount = 1;
       }
-
+      
       for (int i = 0; i < planeCount; i++) {
         void *planeAddress;
         size_t bytesPerRow;
         size_t height;
         size_t width;
-
+        
         if (isPlanar) {
           planeAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, i);
           bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, i);
@@ -782,22 +831,22 @@ NSString *const errorMethod = @"error";
           height = CVPixelBufferGetHeight(pixelBuffer);
           width = CVPixelBufferGetWidth(pixelBuffer);
         }
-
+        
         NSNumber *length = @(bytesPerRow * height);
         NSData *bytes = [NSData dataWithBytes:planeAddress length:length.unsignedIntegerValue];
-
+        
         NSMutableDictionary *planeBuffer = [NSMutableDictionary dictionary];
         planeBuffer[@"bytesPerRow"] = @(bytesPerRow);
         planeBuffer[@"width"] = @(width);
         planeBuffer[@"height"] = @(height);
         planeBuffer[@"bytes"] = [FlutterStandardTypedData typedDataWithBytes:bytes];
-
+        
         [planes addObject:planeBuffer];
       }
       // Lock the base address before accessing pixel data, and unlock it afterwards.
       // Done accessing the `pixelBuffer` at this point.
       CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-
+      
       NSMutableDictionary *imageBuffer = [NSMutableDictionary dictionary];
       imageBuffer[@"width"] = [NSNumber numberWithUnsignedLong:imageWidth];
       imageBuffer[@"height"] = [NSNumber numberWithUnsignedLong:imageHeight];
@@ -808,7 +857,7 @@ NSString *const errorMethod = @"error";
       Float64 nsExposureDuration = 1000000000 * exposureDuration;
       imageBuffer[@"sensorExposureTime"] = [NSNumber numberWithInt:nsExposureDuration];
       imageBuffer[@"sensorSensitivity"] = [NSNumber numberWithFloat:[_captureDevice ISO]];
-
+      
       dispatch_async(dispatch_get_main_queue(), ^{
         eventSink(imageBuffer);
       });
@@ -825,7 +874,7 @@ NSString *const errorMethod = @"error";
     
     // Copy the pixel buffer
     CVPixelBufferRef pixelBufferCopy = NULL;
-    CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
+    CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
     CVPixelBufferLockBaseAddress(pixelBufferCopy, 0);
     uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
     memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
@@ -839,66 +888,246 @@ NSString *const errorMethod = @"error";
                          arguments:[NSString stringWithFormat:@"%@", _videoWriter.error]];
       return;
     }
-
+    
     CFRetain(sampleBuffer);
     CMTime currentSampleTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-
+    
     if (_videoWriter.status != AVAssetWriterStatusWriting) {
       [_videoWriter startWriting];
       [_videoWriter startSessionAtSourceTime:currentSampleTime];
     }
-
+    
     if (output == _captureVideoOutput) {
       if (_videoIsDisconnected) {
         _videoIsDisconnected = NO;
-
+        
         if (_videoTimeOffset.value == 0) {
           _videoTimeOffset = CMTimeSubtract(currentSampleTime, _lastVideoSampleTime);
         } else {
           CMTime offset = CMTimeSubtract(currentSampleTime, _lastVideoSampleTime);
           _videoTimeOffset = CMTimeAdd(_videoTimeOffset, offset);
         }
-
+        
         return;
       }
-
+      
       _lastVideoSampleTime = currentSampleTime;
-
+      
       CVPixelBufferRef nextBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
       CMTime nextSampleTime = CMTimeSubtract(_lastVideoSampleTime, _videoTimeOffset);
       [_videoAdaptor appendPixelBuffer:nextBuffer withPresentationTime:nextSampleTime];
     } else {
       CMTime dur = CMSampleBufferGetDuration(sampleBuffer);
-
+      
       if (dur.value > 0) {
         currentSampleTime = CMTimeAdd(currentSampleTime, dur);
       }
-
+      
       if (_audioIsDisconnected) {
         _audioIsDisconnected = NO;
-
+        
         if (_audioTimeOffset.value == 0) {
           _audioTimeOffset = CMTimeSubtract(currentSampleTime, _lastAudioSampleTime);
         } else {
           CMTime offset = CMTimeSubtract(currentSampleTime, _lastAudioSampleTime);
           _audioTimeOffset = CMTimeAdd(_audioTimeOffset, offset);
         }
-
+        
         return;
       }
-
+      
       _lastAudioSampleTime = currentSampleTime;
-
+      
       if (_audioTimeOffset.value != 0) {
         CFRelease(sampleBuffer);
         sampleBuffer = [self adjustTime:sampleBuffer by:_audioTimeOffset];
       }
-
+      
       [self newAudioSample:sampleBuffer];
     }
-
+    
     CFRelease(sampleBuffer);
   }
+}
+
+- (CVPixelBufferRef)scalePixelBufferToAspectRatio:(CVPixelBufferRef)pixelBuffer {
+  //  return pixelBuffer;
+  OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+  
+//  size_t finalWidth = _previewSize.width;
+//  size_t finalHeight = _previewSize.height;
+  
+  size_t sourceWidth = CVPixelBufferGetWidth(pixelBuffer);
+  size_t sourceHeight = CVPixelBufferGetHeight(pixelBuffer);
+  
+  size_t finalWidth = sourceWidth;
+  size_t finalHeight = sourceHeight * 3 / 4;
+  
+  CGRect aspectRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(sourceWidth, sourceHeight), CGRectMake(0, 0, finalWidth, finalHeight));
+  
+  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+  
+  size_t startX = aspectRect.origin.x;
+  size_t startY = aspectRect.origin.y;
+  size_t yOffSet = 4 * (finalWidth * startY + startX);
+  
+  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+  
+  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
+  
+  void* destData = malloc(finalHeight * finalWidth * 4);
+  
+  vImage_Buffer srcBuffer = { (void *)baseAddress, sourceWidth, sourceHeight, bytesPerRow};
+  vImage_Buffer destBuffer = { (void *)destData+yOffSet, aspectRect.size.height, aspectRect.size.width, finalWidth * 4};
+  
+//  vImageScale_CbCr8(&srcBuffer, &destBuffer, NULL, 0);
+  
+  vImageTentConvolve_ARGB8888(&srcBuffer, &destBuffer, nil, aspectRect.origin.x, aspectRect.origin.y, 0, 0, 0, kvImagePrintDiagnosticsToConsole);
+  
+//    vImageCVImageFormatRef cvImageformat = vImageCVImageFormat_CreateWithCVPixelBuffer(pixelBuffer);
+  //  CFRetain(cvImageformat);
+  //
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferRef outputPixelBuffer;
+  
+  NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
+      [NSNumber numberWithBool : YES], kCVPixelBufferCGImageCompatibilityKey,
+      [NSNumber numberWithBool : YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
+      [NSNumber numberWithInt : (int) aspectRect.size.width], kCVPixelBufferWidthKey,
+      [NSNumber numberWithInt : (int) aspectRect.size.height], kCVPixelBufferHeightKey,
+      nil];
+
+  CVPixelBufferCreateWithBytes(kCFAllocatorDefault, finalWidth, finalHeight, inputPixelFormat, destData, aspectRect.size.width, NULL, NULL, (__bridge CFDictionaryRef)options, &outputPixelBuffer);
+
+  
+//  CVPixelBufferCreate(kCFAllocatorSystemDefault, aspectRect.size.width, aspectRect.size.height, kCVPixelFormatType_32BGRA, NULL, &outputPixelBuffer);
+//
+//  CGColorSpaceRef dstColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
+//
+//  vImage_CGImageFormat format = {
+//      .bitsPerComponent = 16,
+//      .bitsPerPixel = 64,
+//      .bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast  |  kCGBitmapByteOrder16Big ,
+//      .colorSpace = dstColorSpace
+//  };
+//  vImageCVImageFormatRef vformat = vImageCVImageFormat_Create(kCVPixelFormatType_4444AYpCbCr16,
+//                                                              kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2,
+//                                                              kCVImageBufferChromaLocation_Center,
+//                                                              format.colorSpace,
+//                                                              0);
+//
+////  CVPixelBufferLockBaseAddress(outputPixelBuffer, 0);
+//    vImageBuffer_CopyToCVPixelBuffer(&destBuffer, &format, outputPixelBuffer, vformat, 0, kvImagePrintDiagnosticsToConsole);
+  free(destData);
+//  CVPixelBufferUnlockBaseAddress(outputPixelBuffer, 0);
+
+  return outputPixelBuffer;
+  
+}
+
+- (CVPixelBufferRef)scalePixelBufferToAspectRatioV3:(CVPixelBufferRef)pixelBuffer {
+  //  return pixelBuffer;
+  OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+  
+//  size_t finalWidth = _previewSize.width;
+//  size_t finalHeight = _previewSize.height;
+  
+  size_t sourceWidth = CVPixelBufferGetWidth(pixelBuffer);
+  size_t sourceHeight = CVPixelBufferGetHeight(pixelBuffer);
+  
+  size_t finalWidth = sourceWidth;
+  size_t finalHeight = sourceHeight * 3 / 4;
+  
+  CGRect aspectRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(sourceWidth, sourceHeight), CGRectMake(0, 0, finalWidth, finalHeight));
+  
+  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+  
+  size_t startX = aspectRect.origin.x;
+  size_t startY = aspectRect.origin.y;
+  size_t yOffSet = 4 * (finalWidth * startY + startX);
+  
+  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+  
+  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
+  
+  void* destData = malloc(finalHeight * finalWidth * 4);
+  
+  vImage_Buffer srcBuffer = { (void *)baseAddress, sourceWidth, sourceHeight, bytesPerRow};
+  vImage_Buffer destBuffer = { (void *)destData+yOffSet, aspectRect.size.height, aspectRect.size.width, finalWidth * 4};
+  
+//  vImage_Buffer *destination;
+  vImageBuffer_Init(&destBuffer, aspectRect.size.height, aspectRect.size.width, 32, kvImagePrintDiagnosticsToConsole);
+  
+//  vImageScale_CbCr8(&srcBuffer, &destBuffer, NULL, 0);
+  
+  vImageTentConvolve_ARGB8888(&srcBuffer, &destBuffer, nil, aspectRect.origin.x, aspectRect.origin.y, aspectRect.size.height, aspectRect.size.width, 0, kvImagePrintDiagnosticsToConsole);
+  
+//    vImageCVImageFormatRef cvImageformat = vImageCVImageFormat_CreateWithCVPixelBuffer(pixelBuffer);
+  //  CFRetain(cvImageformat);
+  //
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    
+  CVPixelBufferRef outputPixelBuffer;
+  
+  NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
+      [NSNumber numberWithBool : YES], kCVPixelBufferCGImageCompatibilityKey,
+      [NSNumber numberWithBool : YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
+      [NSNumber numberWithInt : (int) aspectRect.size.width], kCVPixelBufferWidthKey,
+      [NSNumber numberWithInt : (int) aspectRect.size.height], kCVPixelBufferHeightKey,
+      nil];
+
+  CVPixelBufferCreateWithBytes(kCFAllocatorDefault, finalWidth, finalHeight, inputPixelFormat, &destBuffer.rowBytes, aspectRect.size.width, NULL, NULL, (__bridge CFDictionaryRef)options, &outputPixelBuffer);
+
+  
+  free(destData);
+
+  return outputPixelBuffer;
+  
+}
+
+- (CVPixelBufferRef)scalePixelBufferToAspectRatioV2:(CVPixelBufferRef)pixelBuffer {
+  
+                  size_t startingWidth = CVPixelBufferGetHeight(pixelBuffer);
+                  size_t cropInsetX = (int)(((1 - (4.0/3.0)/(16.0/9.0)) * 0.5) * startingWidth);
+                  size_t finalWidth = startingWidth - cropInsetX * 2;
+                  size_t height = CVPixelBufferGetWidth(pixelBuffer);
+  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+//  size_t finalHei
+  
+                  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+  
+                  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
+  
+                  void* destData = malloc(height * finalWidth * 4);
+  
+  vImage_Buffer srcBuffer = { (void *)baseAddress, height, startingWidth, bytesPerRow };
+                  vImage_Buffer destBuffer = { (void *)destData + cropInsetX * 4, height, finalWidth, finalWidth * 4};
+  
+                  vImage_Error err = vImageScale_ARGB8888(&srcBuffer, &destBuffer, NULL, 0);
+  
+                  CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+  
+                  if (err != kvImageNoError) {
+  
+                     NSLog(@"Error: %ld", err);
+                     free(destData);
+                  }
+  
+                  OSType pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+  
+  CVPixelBufferRef outputBuffer = NULL;
+                  CVReturn result = CVPixelBufferCreateWithBytes(NULL, finalWidth, height, pixelFormat, destData, finalWidth * 4, NULL, NULL, NULL, &outputBuffer);
+  
+  
+                  if (result != kCVReturnSuccess) {
+  
+                     NSLog(@"Error: could not create new pixel buffer");
+                     free(destData);
+                  }
+  free(destData);
+//      CFRetain(newBuffer);
+  return outputBuffer;
+
 }
 
 - (CMSampleBufferRef)adjustTime:(CMSampleBufferRef)sample by:(CMTime)offset CF_RETURNS_RETAINED {
@@ -1525,5 +1754,232 @@ NSString *const errorMethod = @"error";
       _isAudioSetup = NO;
     }
   }
+}
+
+- (CVPixelBufferRef)createCroppedPixelBufferBiPlanar:(CVPixelBufferRef)srcPixelBuffer
+                                        croppingRect:(CGRect)croppingRect
+                                           scaleSize:(CGSize)scaleSize {
+
+//    OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(srcPixelBuffer);
+//    assert(inputPixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+//           || inputPixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+
+//    size_t inputWidth = CVPixelBufferGetWidth(srcPixelBuffer);
+//    size_t inputHeight = CVPixelBufferGetHeight(srcPixelBuffer);
+
+    int cropX = CGRectGetMinX(croppingRect);
+    int cropY = CGRectGetMinY(croppingRect);
+    int cropWidth = CGRectGetWidth(croppingRect);
+    int cropHeight = CGRectGetHeight(croppingRect);
+
+    if (CVPixelBufferLockBaseAddress(srcPixelBuffer, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess) {
+        NSLog(@"Could not lock base address");
+        return nil;
+    }
+
+    void *sourceData = CVPixelBufferGetBaseAddress(srcPixelBuffer);
+
+    if (sourceData == NULL) {
+        NSLog(@"Error: could not get pixel buffer base address");
+        return nil;
+    }
+
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(srcPixelBuffer);
+  size_t bytesPerPixel = bytesPerRow / CVPixelBufferGetWidth(srcPixelBuffer);
+    size_t croppingOffset = cropY * bytesPerRow + cropX * bytesPerPixel;
+    vImage_Buffer sourceBuffer = {
+        .data = sourceData + croppingOffset,
+        .height = (vImagePixelCount)cropHeight,
+        .width = (vImagePixelCount)cropWidth,
+        .rowBytes = bytesPerRow
+    };
+
+    size_t destinationBytesPerRow = bytesPerRow;
+
+    size_t outputBufferSize = scaleSize.height * destinationBytesPerRow;
+
+    void *finalPixelData = malloc(outputBufferSize);
+    if (finalPixelData == NULL) {
+        NSLog(@"Error: out of memory");
+        return nil;
+    }
+
+    // Do Luminace Plane Crop and Scale
+
+    vImage_Buffer luminanceDestBuffer = {
+        .data = finalPixelData,
+        .height = scaleSize.height,
+        .width = scaleSize.width,
+        .rowBytes = destinationBytesPerRow
+    };
+
+    vImage_Error error = vImageScale_ARGB8888(&sourceBuffer, &luminanceDestBuffer, nil, kvImagePrintDiagnosticsToConsole);
+    if (error != kvImageNoError) {
+        NSLog(@"Error: %ld", error);
+        free(finalPixelData);
+        return nil;
+    }
+
+    // End Luminance Plane Crop and Scale
+
+    OSType pixelFormat = CVPixelBufferGetPixelFormatType(srcPixelBuffer);
+    CVPixelBufferRef outputPixelBuffer;
+
+//    size_t planeWidths[2] = {scaleSize.width, scaleSize.width/2};
+//    size_t planeHeights[2] = {scaleSize.height, scaleSize.height/2};
+//    size_t bytesPerRows[2] = {destinationBytesPerRow, destinationBytesPerRowCbCr};
+//    void *baseAddresses[2] = {finalPixelData, finalPixelData + outputBufferSizeLuminance};
+
+    OSStatus status = CVPixelBufferCreateWithBytes(nil, // 1
+                                                         scaleSize.width, // 2
+                                                         scaleSize.height, // 3
+                                                         pixelFormat, // 4
+                                                         finalPixelData, // 5
+                                                         outputBufferSize, // 6
+//                                                         2, // 7
+//                                                         baseAddresses, // 8
+//                                                         planeWidths, // 9
+//                                                         planeHeights, // 10
+//                                                         bytesPerRows, // 11
+                                                         nil, // 12
+                                                         nil, // 13
+                                                         nil, // 14
+                                                         &outputPixelBuffer // 16
+                                                         );
+
+    if (status != kCVReturnSuccess) {
+        NSLog(@"Error: could not create new pixel buffer");
+        free(finalPixelData);
+        return nil;
+    }
+  free(finalPixelData);
+
+    return outputPixelBuffer;
+}
+
+- (CVPixelBufferRef)createCroppedPixelBufferCoreImage:(CVPixelBufferRef)pixelBuffer
+                                             cropRect:(CGRect)cropRect
+                                            scaleSize:(CGSize)scaleSize
+                                              context:(CIContext *)context {
+
+//    assertCropAndScaleValid(pixelBuffer, cropRect, scaleSize);
+//  return pixelBuffer;
+    CIImage *image = [CIImage imageWithCVImageBuffer:pixelBuffer];
+    image = [image imageByCroppingToRect:cropRect];
+
+//    CGFloat scaleX = scaleSize.width / CGRectGetWidth(image.extent);
+//    CGFloat scaleY = scaleSize.height / CGRectGetHeight(image.extent);
+//
+//  image = [image imageByCroppingToRect:cropRect];
+
+//    image = [image imageByApplyingTransform:CGAffineTransformMakeScale(scaleX, scaleY)];
+
+    // Due to the way [CIContext:render:toCVPixelBuffer] works, we need to translate the image so the cropped section is at the origin
+//    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-image.extent.origin.x, -image.extent.origin.y)];
+//  image.pi
+
+    CVPixelBufferRef output = NULL;
+
+    CVPixelBufferCreate(kCFAllocatorDefault,
+                        CGRectGetWidth(image.extent),
+                        CGRectGetHeight(image.extent),
+                        CVPixelBufferGetPixelFormatType(pixelBuffer),
+                        nil,
+                        &output);
+
+    if (output != NULL) {
+      CVPixelBufferLockBaseAddress(output, kCVPixelBufferLock_ReadOnly);
+        [context render:image toCVPixelBuffer:output];
+      CVPixelBufferUnlockBaseAddress(output, kCVPixelBufferLock_ReadOnly);
+    }
+  
+//  image = nil;
+  CFRetain(output);
+  CFRelease(CFBridgingRetain(image));
+  CFRelease(CFBridgingRetain(context));
+
+    return output;
+}
+
+- (CVPixelBufferRef)createCroppedPixelBuffer:(CVPixelBufferRef) sourcePixelBuffer
+                                croppingRect:(CGRect)croppingRect
+                                  scaledSize:(CGSize) scaledSize {
+
+    OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(sourcePixelBuffer);
+    assert(inputPixelFormat == kCVPixelFormatType_32BGRA
+           || inputPixelFormat == kCVPixelFormatType_32ABGR
+           || inputPixelFormat == kCVPixelFormatType_32ARGB
+           || inputPixelFormat == kCVPixelFormatType_32RGBA);
+
+//    assertCropAndScaleValid(sourcePixelBuffer, croppingRect, scaledSize);
+
+    if (CVPixelBufferLockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess) {
+        NSLog(@"Could not lock base address");
+        return nil;
+    }
+
+    void *sourceData = CVPixelBufferGetBaseAddress(sourcePixelBuffer);
+    if (sourceData == NULL) {
+        NSLog(@"Error: could not get pixel buffer base address");
+        CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
+        return nil;
+    }
+
+    size_t sourceBytesPerRow = CVPixelBufferGetBytesPerRow(sourcePixelBuffer);
+    size_t offset = CGRectGetMinY(croppingRect) * sourceBytesPerRow + CGRectGetMinX(croppingRect) * 4;
+
+    vImage_Buffer croppedvImageBuffer = {
+        .data = ((char *)sourceData) + offset,
+        .height = (vImagePixelCount)CGRectGetHeight(croppingRect),
+        .width = (vImagePixelCount)CGRectGetWidth(croppingRect),
+        .rowBytes = sourceBytesPerRow
+    };
+
+//    size_t scaledBytesPerRow = scaledSize.width * 4;
+//    void *scaledData = malloc(scaledSize.height * scaledBytesPerRow);
+//    if (scaledData == NULL) {
+//        NSLog(@"Error: out of memory");
+//        CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
+//        return nil;
+//    }
+//
+//    vImage_Buffer scaledvImageBuffer = {
+//        .data = scaledData,
+//        .height = (vImagePixelCount)scaledSize.height,
+//        .width = (vImagePixelCount)scaledSize.width,
+//        .rowBytes = scaledBytesPerRow
+//    };
+
+    /* The ARGB8888, ARGB16U, ARGB16S and ARGBFFFF functions work equally well on
+     * other channel orderings of 4-channel images, such as RGBA or BGRA.*/
+//    vImage_Error error = vImageScale_ARGB8888(&croppedvImageBuffer, &scaledvImageBuffer, nil, 0);
+//    CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
+
+//    if (error != kvImageNoError) {
+//        NSLog(@"Error: %ld", error);
+//        free(scaledData);
+//        return nil;
+//    }
+
+    OSType pixelFormat = CVPixelBufferGetPixelFormatType(sourcePixelBuffer);
+    CVPixelBufferRef outputPixelBuffer = NULL;
+    CVReturn status = CVPixelBufferCreateWithBytes(nil, scaledSize.width, scaledSize.height, pixelFormat, sourceData, sourceBytesPerRow, nil, nil, nil, &outputPixelBuffer);
+
+  CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
+    if (status != kCVReturnSuccess) {
+        NSLog(@"Error: could not create new pixel buffer");
+//        free(scaledData);
+        return nil;
+    }
+//  free(scaledData);
+
+    return outputPixelBuffer;
+}
+
+- (void)pixelBufferReleaseCallBack:(void *)releaseRefCon
+                       baseAddress:(const void *)baseAddress {
+    if (baseAddress != NULL) {
+        free((void *)baseAddress);
+    }
 }
 @end
