@@ -447,6 +447,7 @@ NSString *const errorMethod = @"error";
           }
           self.livePhotoMovieSaveComplete = true;
           self.livePhotoMovieSaveInProgress = false;
+          [self.livePhotoBuffer clean];
         }];
       } else {
         if (self.secondCameraDevice == nil) {

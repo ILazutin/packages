@@ -14,6 +14,7 @@
 - (void)enqueue:(id)anObject;
 - (id)dequeue;
 - (BOOL)isNotEmpty;
+- (void)clean;
 
 @end
 

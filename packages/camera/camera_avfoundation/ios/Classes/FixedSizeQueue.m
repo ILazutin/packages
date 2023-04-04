@@ -55,5 +55,11 @@
   return [_buffer count] > 0;
 }
 
+- (void)clean {
+  [
+    _buffer removeAllObjects
+  ];
+}
+
 @end
 
