@@ -1006,6 +1006,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   for (AVCaptureOutput *output in [_audioCaptureSession outputs]) {
     [_audioCaptureSession removeOutput:output];
   }
+  _livePhotoBuffer = nil;
+  _renderUtilities = nil;
+  _secondCameraDevice = nil;
 }
 
 - (void)dealloc {
