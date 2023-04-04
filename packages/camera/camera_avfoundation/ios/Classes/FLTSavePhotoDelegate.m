@@ -11,7 +11,9 @@
 /// The queue on which captured photos are written to disk.
 @property(readonly, nonatomic) dispatch_queue_t ioQueue;
 @property(readonly, nonatomic) BOOL enableLivePhoto;
+@property(readonly, nonatomic) FLTResolutionAspectRatio resolutionAspectRatio;
 @property BOOL gotLivePhotoImage;
+@property BOOL needCrop;
 @property NSString *livePhotoMovie;
 @end
 
@@ -20,6 +22,8 @@
 - (instancetype)initWithPath:(NSString *)path
                      ioQueue:(dispatch_queue_t)ioQueue
              enableLivePhoto:(BOOL)enableLivePhoto
+       resolutionAspectRatio:(FLTResolutionAspectRatio)resolutionAspectRatio
+                    needCrop:(BOOL)needCrop
            completionHandler:(FLTSavePhotoDelegateCompletionHandler)completionHandler {
   self = [super init];
   NSAssert(self, @"super init cannot be nil");
@@ -28,7 +32,9 @@
   _enableLivePhoto = enableLivePhoto;
   _gotLivePhotoImage = false;
   _livePhotoMovie = @"";
+  _resolutionAspectRatio = resolutionAspectRatio;
   _completionHandler = completionHandler;
+  _needCrop = needCrop;
   return self;
 }
 
@@ -56,13 +62,30 @@
 }
 
 - (void)captureOutput:(AVCapturePhotoOutput *)output
-    didFinishProcessingPhoto:(AVCapturePhoto *)photo
-                       error:(NSError *)error {
-  self.gotLivePhotoImage = true;
-  [self handlePhotoCaptureResultWithError:error
-                        photoDataProvider:^NSData * {
-                          return [photo fileDataRepresentation];
-                        }];
+didFinishProcessingPhoto:(AVCapturePhoto *)photo
+                error:(NSError *)error {
+  
+  if (self.resolutionAspectRatio == FLTResolutionAspectRatio16_9 || !_needCrop) {
+    self.gotLivePhotoImage = true;
+    [self handlePhotoCaptureResultWithError:error
+                          photoDataProvider:^NSData * {
+      return [photo fileDataRepresentation];
+    }];
+  } else {
+    NSData *imageData = [photo fileDataRepresentation];
+    UIImage *uiImage = [UIImage imageWithData:imageData];
+    CGImageRef cgImage = uiImage.CGImage;
+    size_t finalWidth = CGImageGetWidth(cgImage) * 3 / 4;
+    size_t finalHeight = CGImageGetHeight(cgImage);
+    CGRect cropRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(finalWidth, finalHeight), CGRectMake((CGImageGetWidth(cgImage) - finalWidth), 0, finalWidth, finalHeight));
+    CGImageRef cropCGImage = CGImageCreateWithImageInRect(cgImage, cropRect);
+    UIImage *croppingUIImage = [UIImage imageWithCGImage:cropCGImage scale:1 orientation:uiImage.imageOrientation];
+    CGImageRelease(cropCGImage);
+    self.gotLivePhotoImage = true;
+    [self handlePhotoCaptureResultWithError:error photoDataProvider:^NSData * {
+      return UIImageJPEGRepresentation(croppingUIImage, 1);
+    }];
+  }
 }
 
 - (void)captureOutput:(AVCapturePhotoOutput *)output

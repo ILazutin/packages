@@ -99,7 +99,6 @@
 @property(assign, nonatomic) NSUInteger livePhotoMaxDuration;
 @property(assign, nonatomic) NSInteger livePhotoMovieFps;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveInProgress;
-//@property(readonly, nonatomic) CIContext *ciContext;
 @property(readonly, nonatomic) RenderUtilities *renderUtilities;
 @end
 
@@ -205,9 +204,7 @@ NSString *const errorMethod = @"error";
   _deviceOrientation = orientation;
   _videoFormat = kCVPixelFormatType_32BGRA;
   _inProgressSavePhotoDelegates = [NSMutableDictionary dictionary];
-//  _ciContext = [[CIContext alloc] init];
   _renderUtilities = [[RenderUtilities alloc] init];
-//  CFRetain((__bridge CFTypeRef)(_ciContext));
   
   // To limit memory consumption, limit the number of frames pending processing.
   // After some testing, 4 was determined to be the best maximum value.
@@ -415,6 +412,8 @@ NSString *const errorMethod = @"error";
                                              initWithPath:path
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
+                                             resolutionAspectRatio:_resolutionAspectRatio
+                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -481,6 +480,8 @@ NSString *const errorMethod = @"error";
                                              initWithPath:path
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:false
+                                             resolutionAspectRatio:_resolutionAspectRatio
+                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -718,15 +719,21 @@ NSString *const errorMethod = @"error";
         }
     }
   }
-  if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
-    _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 3 / 4);
-  } else {
-    _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 9 / 16);
+  if (_videoCaptureSession.sessionPreset == AVCaptureSessionPresetInputPriority) {
+    if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
+      _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 3 / 4);
+    } else {
+      _previewSize = CGSizeMake(_previewSize.width, _previewSize.width * 9 / 16);
+    }
   }
   if (_enableLivePhoto && !_livePhotoCustomImpl && _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
     _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
   } else if (_videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
     _videoCaptureSession.sessionPreset = sessionPreset;
+    if (resolutionAspectRatio == FLTResolutionAspectRatio4_3) {
+      _previewSize = CGSizeMake(_captureDevice.activeFormat.highResolutionStillImageDimensions.width,
+                                _captureDevice.activeFormat.highResolutionStillImageDimensions.height);
+    }
   }
   _audioCaptureSession.sessionPreset = _videoCaptureSession.sessionPreset;
 }
@@ -734,9 +741,28 @@ NSString *const errorMethod = @"error";
 - (void)captureOutput:(AVCaptureOutput *)output
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
+  if (_enableLivePhoto && !_livePhotoMovieSaveInProgress) {
+    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    // Get pixel buffer info
+    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+    int bufferWidth = (int)CVPixelBufferGetWidth(pixelBuffer);
+    int bufferHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+    uint8_t *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
+    
+    // Copy the pixel buffer
+    CVPixelBufferRef pixelBufferCopy = NULL;
+    CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
+    CVPixelBufferLockBaseAddress(pixelBufferCopy, 0);
+    uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
+    memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+    
+    [_livePhotoBuffer enqueue:CFBridgingRelease(pixelBufferCopy)];
+  }
   if (output == _captureVideoOutput) {
     CVPixelBufferRef newBuffer = NULL;
-    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9) {
+    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9 || _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
       newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     } else {
       CVPixelBufferRef tempBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
@@ -751,26 +777,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       newBuffer = [_renderUtilities scale:tempBuffer toSize:CGSizeMake(finalWidth, finalHeight)];
       CFRelease(tempBuffer);
     }
-//    CVPixelBufferRef newBuffer = [_renderUtilities createCroppedPixelBuffer:newBuffer1 croppingRect:cropRect];
-    //    size_t width = CVPixelBufferGetWidth(newBuffer);
-    //    size_t height = CVPixelBufferGetHeight(newBuffer);
-    //
-    //    if (width != _previewSize.width || height != _previewSize.height) {
-//    CVPixelBufferRef newBuffer = [self createCroppedPixelBufferBiPlanar:newBuffer1 croppingRect:CGRectMake(0, 0, _previewSize.width, _previewSize.height) scaleSize:CGSizeMake(_previewSize.width, _previewSize.height)];
-//    CVPixelBufferRef newBuffer = [self createCroppedPixelBufferCoreImage:newBuffer1 cropRect:aspectRect scaleSize:CGSizeMake(aspectRect.size.width, aspectRect.size.width) context:_ciContext];
-//    CVPixelBufferRef newBuffer = [self createCroppedPixelBuffer:newBuffer1 croppingRect:CGRectMake(0, 0, _previewSize.width, _previewSize.height) scaledSize:CGSizeMake(_previewSize.width, _previewSize.height)];
     CFRetain(newBuffer);
-//    CFRelease(newBuffer1);
-    
-    
-//    CVPixelBufferRef newBuffer = [self scalePixelBufferToAspectRatioV3:CMSampleBufferGetImageBuffer(sampleBuffer)];
-//    CFRetain(newBuffer);
-    
-//    CVPixelBufferRef newBuffer = [self scalePixelBufferToAspectRatioV2:newBuffer1];
-    //      CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    //
-//    CFRetain(newBuffer);
-//    CFRelease(newBuffer1);
     
     __block CVPixelBufferRef previousPixelBuffer = nil;
     // Use `dispatch_sync` to avoid unnecessary context switch under common non-contest scenarios;
@@ -863,25 +870,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       });
     }
   }
-  if (_enableLivePhoto && !_livePhotoMovieSaveInProgress) {
-    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    // Get pixel buffer info
-    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-    int bufferWidth = (int)CVPixelBufferGetWidth(pixelBuffer);
-    int bufferHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
-    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-    uint8_t *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-    
-    // Copy the pixel buffer
-    CVPixelBufferRef pixelBufferCopy = NULL;
-    CVPixelBufferCreate(kCFAllocatorDefault, bufferWidth, bufferHeight, kCVPixelFormatType_32BGRA, NULL, &pixelBufferCopy);
-    CVPixelBufferLockBaseAddress(pixelBufferCopy, 0);
-    uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
-    memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-    
-    [_livePhotoBuffer enqueue:CFBridgingRelease(pixelBufferCopy)];
-  }
   if (_isRecording && !_isRecordingPaused) {
     if (_videoWriter.status == AVAssetWriterStatusFailed) {
       [_methodChannel invokeMethod:errorMethod
@@ -948,186 +936,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     CFRelease(sampleBuffer);
   }
-}
-
-- (CVPixelBufferRef)scalePixelBufferToAspectRatio:(CVPixelBufferRef)pixelBuffer {
-  //  return pixelBuffer;
-  OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
-  
-//  size_t finalWidth = _previewSize.width;
-//  size_t finalHeight = _previewSize.height;
-  
-  size_t sourceWidth = CVPixelBufferGetWidth(pixelBuffer);
-  size_t sourceHeight = CVPixelBufferGetHeight(pixelBuffer);
-  
-  size_t finalWidth = sourceWidth;
-  size_t finalHeight = sourceHeight * 3 / 4;
-  
-  CGRect aspectRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(sourceWidth, sourceHeight), CGRectMake(0, 0, finalWidth, finalHeight));
-  
-  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-  
-  size_t startX = aspectRect.origin.x;
-  size_t startY = aspectRect.origin.y;
-  size_t yOffSet = 4 * (finalWidth * startY + startX);
-  
-  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-  
-  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-  
-  void* destData = malloc(finalHeight * finalWidth * 4);
-  
-  vImage_Buffer srcBuffer = { (void *)baseAddress, sourceWidth, sourceHeight, bytesPerRow};
-  vImage_Buffer destBuffer = { (void *)destData+yOffSet, aspectRect.size.height, aspectRect.size.width, finalWidth * 4};
-  
-//  vImageScale_CbCr8(&srcBuffer, &destBuffer, NULL, 0);
-  
-  vImageTentConvolve_ARGB8888(&srcBuffer, &destBuffer, nil, aspectRect.origin.x, aspectRect.origin.y, 0, 0, 0, kvImagePrintDiagnosticsToConsole);
-  
-//    vImageCVImageFormatRef cvImageformat = vImageCVImageFormat_CreateWithCVPixelBuffer(pixelBuffer);
-  //  CFRetain(cvImageformat);
-  //
-  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-    CVPixelBufferRef outputPixelBuffer;
-  
-  NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-      [NSNumber numberWithBool : YES], kCVPixelBufferCGImageCompatibilityKey,
-      [NSNumber numberWithBool : YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
-      [NSNumber numberWithInt : (int) aspectRect.size.width], kCVPixelBufferWidthKey,
-      [NSNumber numberWithInt : (int) aspectRect.size.height], kCVPixelBufferHeightKey,
-      nil];
-
-  CVPixelBufferCreateWithBytes(kCFAllocatorDefault, finalWidth, finalHeight, inputPixelFormat, destData, aspectRect.size.width, NULL, NULL, (__bridge CFDictionaryRef)options, &outputPixelBuffer);
-
-  
-//  CVPixelBufferCreate(kCFAllocatorSystemDefault, aspectRect.size.width, aspectRect.size.height, kCVPixelFormatType_32BGRA, NULL, &outputPixelBuffer);
-//
-//  CGColorSpaceRef dstColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
-//
-//  vImage_CGImageFormat format = {
-//      .bitsPerComponent = 16,
-//      .bitsPerPixel = 64,
-//      .bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast  |  kCGBitmapByteOrder16Big ,
-//      .colorSpace = dstColorSpace
-//  };
-//  vImageCVImageFormatRef vformat = vImageCVImageFormat_Create(kCVPixelFormatType_4444AYpCbCr16,
-//                                                              kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2,
-//                                                              kCVImageBufferChromaLocation_Center,
-//                                                              format.colorSpace,
-//                                                              0);
-//
-////  CVPixelBufferLockBaseAddress(outputPixelBuffer, 0);
-//    vImageBuffer_CopyToCVPixelBuffer(&destBuffer, &format, outputPixelBuffer, vformat, 0, kvImagePrintDiagnosticsToConsole);
-  free(destData);
-//  CVPixelBufferUnlockBaseAddress(outputPixelBuffer, 0);
-
-  return outputPixelBuffer;
-  
-}
-
-- (CVPixelBufferRef)scalePixelBufferToAspectRatioV3:(CVPixelBufferRef)pixelBuffer {
-  //  return pixelBuffer;
-  OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
-  
-//  size_t finalWidth = _previewSize.width;
-//  size_t finalHeight = _previewSize.height;
-  
-  size_t sourceWidth = CVPixelBufferGetWidth(pixelBuffer);
-  size_t sourceHeight = CVPixelBufferGetHeight(pixelBuffer);
-  
-  size_t finalWidth = sourceWidth;
-  size_t finalHeight = sourceHeight * 3 / 4;
-  
-  CGRect aspectRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(sourceWidth, sourceHeight), CGRectMake(0, 0, finalWidth, finalHeight));
-  
-  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-  
-  size_t startX = aspectRect.origin.x;
-  size_t startY = aspectRect.origin.y;
-  size_t yOffSet = 4 * (finalWidth * startY + startX);
-  
-  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-  
-  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-  
-  void* destData = malloc(finalHeight * finalWidth * 4);
-  
-  vImage_Buffer srcBuffer = { (void *)baseAddress, sourceWidth, sourceHeight, bytesPerRow};
-  vImage_Buffer destBuffer = { (void *)destData+yOffSet, aspectRect.size.height, aspectRect.size.width, finalWidth * 4};
-  
-//  vImage_Buffer *destination;
-  vImageBuffer_Init(&destBuffer, aspectRect.size.height, aspectRect.size.width, 32, kvImagePrintDiagnosticsToConsole);
-  
-//  vImageScale_CbCr8(&srcBuffer, &destBuffer, NULL, 0);
-  
-  vImageTentConvolve_ARGB8888(&srcBuffer, &destBuffer, nil, aspectRect.origin.x, aspectRect.origin.y, aspectRect.size.height, aspectRect.size.width, 0, kvImagePrintDiagnosticsToConsole);
-  
-//    vImageCVImageFormatRef cvImageformat = vImageCVImageFormat_CreateWithCVPixelBuffer(pixelBuffer);
-  //  CFRetain(cvImageformat);
-  //
-  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-    
-  CVPixelBufferRef outputPixelBuffer;
-  
-  NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-      [NSNumber numberWithBool : YES], kCVPixelBufferCGImageCompatibilityKey,
-      [NSNumber numberWithBool : YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
-      [NSNumber numberWithInt : (int) aspectRect.size.width], kCVPixelBufferWidthKey,
-      [NSNumber numberWithInt : (int) aspectRect.size.height], kCVPixelBufferHeightKey,
-      nil];
-
-  CVPixelBufferCreateWithBytes(kCFAllocatorDefault, finalWidth, finalHeight, inputPixelFormat, &destBuffer.rowBytes, aspectRect.size.width, NULL, NULL, (__bridge CFDictionaryRef)options, &outputPixelBuffer);
-
-  
-  free(destData);
-
-  return outputPixelBuffer;
-  
-}
-
-- (CVPixelBufferRef)scalePixelBufferToAspectRatioV2:(CVPixelBufferRef)pixelBuffer {
-  
-                  size_t startingWidth = CVPixelBufferGetHeight(pixelBuffer);
-                  size_t cropInsetX = (int)(((1 - (4.0/3.0)/(16.0/9.0)) * 0.5) * startingWidth);
-                  size_t finalWidth = startingWidth - cropInsetX * 2;
-                  size_t height = CVPixelBufferGetWidth(pixelBuffer);
-  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-//  size_t finalHei
-  
-                  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-  
-                  void *baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-  
-                  void* destData = malloc(height * finalWidth * 4);
-  
-  vImage_Buffer srcBuffer = { (void *)baseAddress, height, startingWidth, bytesPerRow };
-                  vImage_Buffer destBuffer = { (void *)destData + cropInsetX * 4, height, finalWidth, finalWidth * 4};
-  
-                  vImage_Error err = vImageScale_ARGB8888(&srcBuffer, &destBuffer, NULL, 0);
-  
-                  CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-  
-                  if (err != kvImageNoError) {
-  
-                     NSLog(@"Error: %ld", err);
-                     free(destData);
-                  }
-  
-                  OSType pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
-  
-  CVPixelBufferRef outputBuffer = NULL;
-                  CVReturn result = CVPixelBufferCreateWithBytes(NULL, finalWidth, height, pixelFormat, destData, finalWidth * 4, NULL, NULL, NULL, &outputBuffer);
-  
-  
-                  if (result != kCVReturnSuccess) {
-  
-                     NSLog(@"Error: could not create new pixel buffer");
-                     free(destData);
-                  }
-  free(destData);
-//      CFRetain(newBuffer);
-  return outputBuffer;
-
 }
 
 - (CMSampleBufferRef)adjustTime:(CMSampleBufferRef)sample by:(CMTime)offset CF_RETURNS_RETAINED {
@@ -1756,230 +1564,4 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   }
 }
 
-- (CVPixelBufferRef)createCroppedPixelBufferBiPlanar:(CVPixelBufferRef)srcPixelBuffer
-                                        croppingRect:(CGRect)croppingRect
-                                           scaleSize:(CGSize)scaleSize {
-
-//    OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(srcPixelBuffer);
-//    assert(inputPixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-//           || inputPixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
-
-//    size_t inputWidth = CVPixelBufferGetWidth(srcPixelBuffer);
-//    size_t inputHeight = CVPixelBufferGetHeight(srcPixelBuffer);
-
-    int cropX = CGRectGetMinX(croppingRect);
-    int cropY = CGRectGetMinY(croppingRect);
-    int cropWidth = CGRectGetWidth(croppingRect);
-    int cropHeight = CGRectGetHeight(croppingRect);
-
-    if (CVPixelBufferLockBaseAddress(srcPixelBuffer, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess) {
-        NSLog(@"Could not lock base address");
-        return nil;
-    }
-
-    void *sourceData = CVPixelBufferGetBaseAddress(srcPixelBuffer);
-
-    if (sourceData == NULL) {
-        NSLog(@"Error: could not get pixel buffer base address");
-        return nil;
-    }
-
-    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(srcPixelBuffer);
-  size_t bytesPerPixel = bytesPerRow / CVPixelBufferGetWidth(srcPixelBuffer);
-    size_t croppingOffset = cropY * bytesPerRow + cropX * bytesPerPixel;
-    vImage_Buffer sourceBuffer = {
-        .data = sourceData + croppingOffset,
-        .height = (vImagePixelCount)cropHeight,
-        .width = (vImagePixelCount)cropWidth,
-        .rowBytes = bytesPerRow
-    };
-
-    size_t destinationBytesPerRow = bytesPerRow;
-
-    size_t outputBufferSize = scaleSize.height * destinationBytesPerRow;
-
-    void *finalPixelData = malloc(outputBufferSize);
-    if (finalPixelData == NULL) {
-        NSLog(@"Error: out of memory");
-        return nil;
-    }
-
-    // Do Luminace Plane Crop and Scale
-
-    vImage_Buffer luminanceDestBuffer = {
-        .data = finalPixelData,
-        .height = scaleSize.height,
-        .width = scaleSize.width,
-        .rowBytes = destinationBytesPerRow
-    };
-
-    vImage_Error error = vImageScale_ARGB8888(&sourceBuffer, &luminanceDestBuffer, nil, kvImagePrintDiagnosticsToConsole);
-    if (error != kvImageNoError) {
-        NSLog(@"Error: %ld", error);
-        free(finalPixelData);
-        return nil;
-    }
-
-    // End Luminance Plane Crop and Scale
-
-    OSType pixelFormat = CVPixelBufferGetPixelFormatType(srcPixelBuffer);
-    CVPixelBufferRef outputPixelBuffer;
-
-//    size_t planeWidths[2] = {scaleSize.width, scaleSize.width/2};
-//    size_t planeHeights[2] = {scaleSize.height, scaleSize.height/2};
-//    size_t bytesPerRows[2] = {destinationBytesPerRow, destinationBytesPerRowCbCr};
-//    void *baseAddresses[2] = {finalPixelData, finalPixelData + outputBufferSizeLuminance};
-
-    OSStatus status = CVPixelBufferCreateWithBytes(nil, // 1
-                                                         scaleSize.width, // 2
-                                                         scaleSize.height, // 3
-                                                         pixelFormat, // 4
-                                                         finalPixelData, // 5
-                                                         outputBufferSize, // 6
-//                                                         2, // 7
-//                                                         baseAddresses, // 8
-//                                                         planeWidths, // 9
-//                                                         planeHeights, // 10
-//                                                         bytesPerRows, // 11
-                                                         nil, // 12
-                                                         nil, // 13
-                                                         nil, // 14
-                                                         &outputPixelBuffer // 16
-                                                         );
-
-    if (status != kCVReturnSuccess) {
-        NSLog(@"Error: could not create new pixel buffer");
-        free(finalPixelData);
-        return nil;
-    }
-  free(finalPixelData);
-
-    return outputPixelBuffer;
-}
-
-- (CVPixelBufferRef)createCroppedPixelBufferCoreImage:(CVPixelBufferRef)pixelBuffer
-                                             cropRect:(CGRect)cropRect
-                                            scaleSize:(CGSize)scaleSize
-                                              context:(CIContext *)context {
-
-//    assertCropAndScaleValid(pixelBuffer, cropRect, scaleSize);
-//  return pixelBuffer;
-    CIImage *image = [CIImage imageWithCVImageBuffer:pixelBuffer];
-    image = [image imageByCroppingToRect:cropRect];
-
-//    CGFloat scaleX = scaleSize.width / CGRectGetWidth(image.extent);
-//    CGFloat scaleY = scaleSize.height / CGRectGetHeight(image.extent);
-//
-//  image = [image imageByCroppingToRect:cropRect];
-
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeScale(scaleX, scaleY)];
-
-    // Due to the way [CIContext:render:toCVPixelBuffer] works, we need to translate the image so the cropped section is at the origin
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-image.extent.origin.x, -image.extent.origin.y)];
-//  image.pi
-
-    CVPixelBufferRef output = NULL;
-
-    CVPixelBufferCreate(kCFAllocatorDefault,
-                        CGRectGetWidth(image.extent),
-                        CGRectGetHeight(image.extent),
-                        CVPixelBufferGetPixelFormatType(pixelBuffer),
-                        nil,
-                        &output);
-
-    if (output != NULL) {
-      CVPixelBufferLockBaseAddress(output, kCVPixelBufferLock_ReadOnly);
-        [context render:image toCVPixelBuffer:output];
-      CVPixelBufferUnlockBaseAddress(output, kCVPixelBufferLock_ReadOnly);
-    }
-  
-//  image = nil;
-  CFRetain(output);
-  CFRelease(CFBridgingRetain(image));
-  CFRelease(CFBridgingRetain(context));
-
-    return output;
-}
-
-- (CVPixelBufferRef)createCroppedPixelBuffer:(CVPixelBufferRef) sourcePixelBuffer
-                                croppingRect:(CGRect)croppingRect
-                                  scaledSize:(CGSize) scaledSize {
-
-    OSType inputPixelFormat = CVPixelBufferGetPixelFormatType(sourcePixelBuffer);
-    assert(inputPixelFormat == kCVPixelFormatType_32BGRA
-           || inputPixelFormat == kCVPixelFormatType_32ABGR
-           || inputPixelFormat == kCVPixelFormatType_32ARGB
-           || inputPixelFormat == kCVPixelFormatType_32RGBA);
-
-//    assertCropAndScaleValid(sourcePixelBuffer, croppingRect, scaledSize);
-
-    if (CVPixelBufferLockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess) {
-        NSLog(@"Could not lock base address");
-        return nil;
-    }
-
-    void *sourceData = CVPixelBufferGetBaseAddress(sourcePixelBuffer);
-    if (sourceData == NULL) {
-        NSLog(@"Error: could not get pixel buffer base address");
-        CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
-        return nil;
-    }
-
-    size_t sourceBytesPerRow = CVPixelBufferGetBytesPerRow(sourcePixelBuffer);
-    size_t offset = CGRectGetMinY(croppingRect) * sourceBytesPerRow + CGRectGetMinX(croppingRect) * 4;
-
-    vImage_Buffer croppedvImageBuffer = {
-        .data = ((char *)sourceData) + offset,
-        .height = (vImagePixelCount)CGRectGetHeight(croppingRect),
-        .width = (vImagePixelCount)CGRectGetWidth(croppingRect),
-        .rowBytes = sourceBytesPerRow
-    };
-
-//    size_t scaledBytesPerRow = scaledSize.width * 4;
-//    void *scaledData = malloc(scaledSize.height * scaledBytesPerRow);
-//    if (scaledData == NULL) {
-//        NSLog(@"Error: out of memory");
-//        CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
-//        return nil;
-//    }
-//
-//    vImage_Buffer scaledvImageBuffer = {
-//        .data = scaledData,
-//        .height = (vImagePixelCount)scaledSize.height,
-//        .width = (vImagePixelCount)scaledSize.width,
-//        .rowBytes = scaledBytesPerRow
-//    };
-
-    /* The ARGB8888, ARGB16U, ARGB16S and ARGBFFFF functions work equally well on
-     * other channel orderings of 4-channel images, such as RGBA or BGRA.*/
-//    vImage_Error error = vImageScale_ARGB8888(&croppedvImageBuffer, &scaledvImageBuffer, nil, 0);
-//    CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
-
-//    if (error != kvImageNoError) {
-//        NSLog(@"Error: %ld", error);
-//        free(scaledData);
-//        return nil;
-//    }
-
-    OSType pixelFormat = CVPixelBufferGetPixelFormatType(sourcePixelBuffer);
-    CVPixelBufferRef outputPixelBuffer = NULL;
-    CVReturn status = CVPixelBufferCreateWithBytes(nil, scaledSize.width, scaledSize.height, pixelFormat, sourceData, sourceBytesPerRow, nil, nil, nil, &outputPixelBuffer);
-
-  CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, kCVPixelBufferLock_ReadOnly);
-    if (status != kCVReturnSuccess) {
-        NSLog(@"Error: could not create new pixel buffer");
-//        free(scaledData);
-        return nil;
-    }
-//  free(scaledData);
-
-    return outputPixelBuffer;
-}
-
-- (void)pixelBufferReleaseCallBack:(void *)releaseRefCon
-                       baseAddress:(const void *)baseAddress {
-    if (baseAddress != NULL) {
-        free((void *)baseAddress);
-    }
-}
 @end

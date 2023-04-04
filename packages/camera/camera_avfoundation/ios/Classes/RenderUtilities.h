@@ -13,16 +13,8 @@
 
 @interface RenderUtilities : NSObject
 
-- (CVPixelBufferRef)progressPixelBuffer:(CVPixelBufferRef)pixelBuffer;
-- (CVPixelBufferRef)crop:(CVPixelBufferRef)pixelBuffer
-                cropRect:(CGRect)cropRect;
-- (CVPixelBufferRef)crop:(CVPixelBufferRef)pixelBuffer
-                cropRect:(CGRect)cropRect
-               scaleSize:(CGSize)scaleSize;
 - (CVPixelBufferRef)scale:(CVPixelBufferRef)pixelBuffer
                    toSize:(CGSize)scaleSize;
-- (CVPixelBufferRef)createCroppedPixelBuffer:(CVPixelBufferRef)sourcePixelBuffer
-                                croppingRect:(CGRect)croppingRect;
 
 @end
 

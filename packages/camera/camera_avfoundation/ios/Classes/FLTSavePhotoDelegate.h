@@ -6,6 +6,7 @@
 @import Foundation;
 
 #import "FLTThreadSafeFlutterResult.h"
+#import "CameraProperties.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -33,6 +34,8 @@ typedef void (^FLTSavePhotoDelegateCompletionHandler)(NSArray *_Nullable paths,
 - (instancetype)initWithPath:(NSString *)path
                      ioQueue:(dispatch_queue_t)ioQueue
              enableLivePhoto:(BOOL)enableLivePhoto
+       resolutionAspectRatio:(FLTResolutionAspectRatio)resolutionAspectRatio
+                    needCrop:(BOOL)needCrop
            completionHandler:(FLTSavePhotoDelegateCompletionHandler)completionHandler;
 @end
 

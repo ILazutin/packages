@@ -117,7 +117,7 @@ class AVFoundationCamera extends CameraPlatform {
         'enableAudio': enableAudio,
         'enableLivePhoto': enableLivePhoto,
         'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds ??
-            const Duration(milliseconds: 3000),
+            const Duration(seconds: 3).inMilliseconds,
         'secondCameraName': secondCameraDescription?.name ?? ''
       });
 
