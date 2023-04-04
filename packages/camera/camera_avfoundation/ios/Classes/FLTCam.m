@@ -99,6 +99,7 @@
 @property(assign, nonatomic) NSUInteger livePhotoMaxDuration;
 @property(assign, nonatomic) NSInteger livePhotoMovieFps;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveInProgress;
+@property(assign, nonatomic) BOOL livePhotoMovieSaveComplete;
 @property(readonly, nonatomic) RenderUtilities *renderUtilities;
 @end
 
@@ -187,6 +188,7 @@ NSString *const errorMethod = @"error";
   _livePhotoCustomImpl = true;
   _livePhotoMaxDuration = livePhotoMaxDuration;
   _livePhotoMovieSaveInProgress = false;
+  _livePhotoMovieSaveComplete = false;
   _captureSessionQueue = captureSessionQueue;
   _pixelBufferSynchronizationQueue =
   dispatch_queue_create("io.flutter.camera.pixelBufferSynchronizationQueue", NULL);
@@ -434,15 +436,18 @@ NSString *const errorMethod = @"error";
         [self saveLivePhotoMovieFromBuffer:videoPath
                          withCallbackBlock:^(BOOL success){
           if (success) {
-            [self.mainCameraCaptures arrayByAddingObject:videoPath];
+            self.mainCameraCaptures = [self.mainCameraCaptures arrayByAddingObject:videoPath];
           }
           if (self.secondCameraDevice == nil) {
-            [result sendSuccessWithData:paths];
+            [result sendSuccessWithData:self.mainCameraCaptures];
+            self.livePhotoMovieSaveComplete = false;
           } else if (self.secondCameraCaptures != nil) {
-            [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+            [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+            self.livePhotoMovieSaveComplete = false;
           }
+          self.livePhotoMovieSaveComplete = true;
+          self.livePhotoMovieSaveInProgress = false;
         }];
-        self.livePhotoMovieSaveInProgress = false;
       } else {
         if (self.secondCameraDevice == nil) {
           [result sendSuccessWithData:paths];
@@ -497,7 +502,7 @@ NSString *const errorMethod = @"error";
     } else {
       NSAssert(path, @"Path must not be nil if no error.");
       self.secondCameraCaptures = paths;
-      if (self.mainCameraCaptures != nil)
+      if (self.mainCameraCaptures != nil && (!self.enableLivePhoto || self.livePhotoMovieSaveComplete))
       {
         [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:paths]];
       }

@@ -52,8 +52,10 @@
     NSData *data = photoDataProvider();
     NSError *ioError;
     if ([data writeToFile:strongSelf.path options:NSDataWritingAtomic error:&ioError]) {
-      if (!self.enableLivePhoto || self.livePhotoMovie.length > 0) {
+      if (self.enableLivePhoto && self.livePhotoMovie.length > 0) {
         strongSelf.completionHandler([NSArray arrayWithObjects: self.path, self.livePhotoMovie, nil], nil);
+      } else if (!self.enableLivePhoto) {
+        strongSelf.completionHandler([NSArray arrayWithObjects: self.path, nil], nil);
       }
     } else {
       strongSelf.completionHandler(nil, ioError);
