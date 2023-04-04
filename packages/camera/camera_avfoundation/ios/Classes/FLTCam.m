@@ -197,7 +197,7 @@ NSString *const errorMethod = @"error";
   _audioCaptureSession = audioCaptureSession;
   _captureDevice = [AVCaptureDevice deviceWithUniqueID:cameraName];
   _flashMode = _captureDevice.hasFlash ? FLTFlashModeAuto : FLTFlashModeOff;
-  if (![secondCameraName  isEqual: @""]) {
+  if (![secondCameraName isEqual: @""]) {
     _secondCameraDevice = [AVCaptureDevice deviceWithUniqueID:secondCameraName];
   }
   _exposureMode = FLTExposureModeAuto;
@@ -573,6 +573,7 @@ NSString *const errorMethod = @"error";
                                             atTime:presentTime
                                          withInput:writerInput];
         NSAssert(appendSuccess, @"Failed to append");
+        CFRelease(buffer);
         
         i++;
       } else {

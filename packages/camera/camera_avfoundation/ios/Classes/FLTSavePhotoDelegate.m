@@ -79,6 +79,14 @@ didFinishProcessingPhoto:(AVCapturePhoto *)photo
     CGImageRef cgImage = uiImage.CGImage;
     size_t finalWidth = CGImageGetWidth(cgImage) * 3 / 4;
     size_t finalHeight = CGImageGetHeight(cgImage);
+    if (finalWidth == finalHeight) {
+      self.gotLivePhotoImage = true;
+      [self handlePhotoCaptureResultWithError:error
+                            photoDataProvider:^NSData * {
+        return [photo fileDataRepresentation];
+      }];
+      return;
+    }
     CGRect cropRect = AVMakeRectWithAspectRatioInsideRect(CGSizeMake(finalWidth, finalHeight), CGRectMake((CGImageGetWidth(cgImage) - finalWidth), 0, finalWidth, finalHeight));
     CGImageRef cropCGImage = CGImageCreateWithImageInRect(cgImage, cropRect);
     UIImage *croppingUIImage = [UIImage imageWithCGImage:cropCGImage scale:1 orientation:uiImage.imageOrientation];
