@@ -116,7 +116,8 @@ class AndroidCamera extends CameraPlatform {
             resolutionAspectRatio ?? ResolutionAspectRatio.RATIO_16_9),
         'enableAudio': enableAudio,
         'enableLivePhoto': enableLivePhoto,
-        'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds,
+        'livePhotoMaxDuration': livePhotoMaxDuration?.inMilliseconds ??
+            const Duration(seconds: 3).inMilliseconds,
         'secondCameraName': secondCameraDescription?.name,
       });
 
