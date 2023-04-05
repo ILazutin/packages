@@ -236,11 +236,7 @@ NSString *const errorMethod = @"error";
     [_videoCaptureSession addConnection:secondConnection];
   }
   
-  if (_enableLivePhoto && _secondCameraDevice == nil && _livePhotoCustomImpl) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
-  } else if (_secondCameraDevice != nil) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
-  }
+  _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
   
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
@@ -281,7 +277,7 @@ NSString *const errorMethod = @"error";
   
   // Setup video capture connection.
   AVCaptureConnection *connection =
-  [AVCaptureConnection connectionWithInputPorts:[NSArray arrayWithObject:_captureVideoInput.ports.firstObject]
+  [AVCaptureConnection connectionWithInputPorts:_captureVideoInput.ports
                                          output:_captureVideoOutput];
   if ([_captureDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
@@ -304,7 +300,7 @@ NSString *const errorMethod = @"error";
   
   // Setup video capture connection.
   AVCaptureConnection *connection =
-  [AVCaptureConnection connectionWithInputPorts: [NSArray arrayWithObject:_secondCameraInput.ports.firstObject]
+  [AVCaptureConnection connectionWithInputPorts:_secondCameraInput.ports
                                          output:_secondCameraOutput];
   if ([_secondCameraDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
@@ -415,7 +411,7 @@ NSString *const errorMethod = @"error";
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
                                              resolutionAspectRatio:_resolutionAspectRatio
-                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
+                                             needCrop:true
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -487,7 +483,7 @@ NSString *const errorMethod = @"error";
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:false
                                              resolutionAspectRatio:_resolutionAspectRatio
-                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
+                                             needCrop:true
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -769,7 +765,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   }
   if (output == _captureVideoOutput) {
     CVPixelBufferRef newBuffer = NULL;
-    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9 || _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9) {
       newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     } else {
       CVPixelBufferRef tempBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
@@ -1008,8 +1004,20 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   for (AVCaptureOutput *output in [_audioCaptureSession outputs]) {
     [_audioCaptureSession removeOutput:output];
   }
+  if (@available(iOS 13.0, *)) {
+    for (AVCaptureConnection *connection in [_videoCaptureSession connections]) {
+      [_videoCaptureSession removeConnection:connection];
+    }
+    for (AVCaptureConnection *connection in [_audioCaptureSession connections]) {
+      [_audioCaptureSession removeConnection:connection];
+    }
+  }
+  [_livePhotoBuffer clean];
   _livePhotoBuffer = nil;
   _renderUtilities = nil;
+  _videoCaptureSession = nil;
+  _audioCaptureSession = nil;
+  _captureDevice = nil;
   _secondCameraDevice = nil;
 }
 

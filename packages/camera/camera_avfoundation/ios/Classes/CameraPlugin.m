@@ -188,6 +188,7 @@
     } else if ([@"dispose" isEqualToString:call.method]) {
       [_registry unregisterTexture:cameraId];
       [_camera close];
+      _camera = nil;
       [result sendSuccess];
     } else if ([@"prepareForVideoRecording" isEqualToString:call.method]) {
       [self.camera setUpCaptureSessionForAudio];
