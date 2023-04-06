@@ -55,5 +55,13 @@
   return [_buffer count] > 0;
 }
 
+- (void)clean {
+  while ([self isNotEmpty]) {
+    id headObject = [self dequeue];
+    CFRelease(CFBridgingRetain(headObject));
+    headObject = nil;
+  }
+}
+
 @end
 

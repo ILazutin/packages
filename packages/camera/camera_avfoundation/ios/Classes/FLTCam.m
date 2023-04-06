@@ -99,6 +99,7 @@
 @property(assign, nonatomic) NSUInteger livePhotoMaxDuration;
 @property(assign, nonatomic) NSInteger livePhotoMovieFps;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveInProgress;
+@property(assign, nonatomic) BOOL livePhotoMovieSaveComplete;
 @property(readonly, nonatomic) RenderUtilities *renderUtilities;
 @end
 
@@ -187,6 +188,7 @@ NSString *const errorMethod = @"error";
   _livePhotoCustomImpl = true;
   _livePhotoMaxDuration = livePhotoMaxDuration;
   _livePhotoMovieSaveInProgress = false;
+  _livePhotoMovieSaveComplete = false;
   _captureSessionQueue = captureSessionQueue;
   _pixelBufferSynchronizationQueue =
   dispatch_queue_create("io.flutter.camera.pixelBufferSynchronizationQueue", NULL);
@@ -195,7 +197,7 @@ NSString *const errorMethod = @"error";
   _audioCaptureSession = audioCaptureSession;
   _captureDevice = [AVCaptureDevice deviceWithUniqueID:cameraName];
   _flashMode = _captureDevice.hasFlash ? FLTFlashModeAuto : FLTFlashModeOff;
-  if (![secondCameraName  isEqual: @""]) {
+  if (![secondCameraName isEqual: @""]) {
     _secondCameraDevice = [AVCaptureDevice deviceWithUniqueID:secondCameraName];
   }
   _exposureMode = FLTExposureModeAuto;
@@ -234,11 +236,7 @@ NSString *const errorMethod = @"error";
     [_videoCaptureSession addConnection:secondConnection];
   }
   
-  if (_enableLivePhoto && _secondCameraDevice == nil && _livePhotoCustomImpl) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetPhoto;
-  } else if (_secondCameraDevice != nil) {
-    _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
-  }
+  _videoCaptureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
   
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
@@ -279,7 +277,7 @@ NSString *const errorMethod = @"error";
   
   // Setup video capture connection.
   AVCaptureConnection *connection =
-  [AVCaptureConnection connectionWithInputPorts:[NSArray arrayWithObject:_captureVideoInput.ports.firstObject]
+  [AVCaptureConnection connectionWithInputPorts:_captureVideoInput.ports
                                          output:_captureVideoOutput];
   if ([_captureDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
@@ -302,7 +300,7 @@ NSString *const errorMethod = @"error";
   
   // Setup video capture connection.
   AVCaptureConnection *connection =
-  [AVCaptureConnection connectionWithInputPorts: [NSArray arrayWithObject:_secondCameraInput.ports.firstObject]
+  [AVCaptureConnection connectionWithInputPorts:_secondCameraInput.ports
                                          output:_secondCameraOutput];
   if ([_secondCameraDevice position] == AVCaptureDevicePositionFront) {
     connection.videoMirrored = YES;
@@ -413,7 +411,7 @@ NSString *const errorMethod = @"error";
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:_capturePhotoOutput.isLivePhotoCaptureEnabled
                                              resolutionAspectRatio:_resolutionAspectRatio
-                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
+                                             needCrop:true
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -434,15 +432,19 @@ NSString *const errorMethod = @"error";
         [self saveLivePhotoMovieFromBuffer:videoPath
                          withCallbackBlock:^(BOOL success){
           if (success) {
-            [self.mainCameraCaptures arrayByAddingObject:videoPath];
+            self.mainCameraCaptures = [self.mainCameraCaptures arrayByAddingObject:videoPath];
           }
           if (self.secondCameraDevice == nil) {
-            [result sendSuccessWithData:paths];
+            [result sendSuccessWithData:self.mainCameraCaptures];
+            self.livePhotoMovieSaveComplete = false;
           } else if (self.secondCameraCaptures != nil) {
-            [result sendSuccessWithData:[paths arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+            [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:self.secondCameraCaptures]];
+            self.livePhotoMovieSaveComplete = false;
           }
+          self.livePhotoMovieSaveComplete = true;
+          self.livePhotoMovieSaveInProgress = false;
+          [self.livePhotoBuffer clean];
         }];
-        self.livePhotoMovieSaveInProgress = false;
       } else {
         if (self.secondCameraDevice == nil) {
           [result sendSuccessWithData:paths];
@@ -481,7 +483,7 @@ NSString *const errorMethod = @"error";
                                              ioQueue:self.photoIOQueue
                                              enableLivePhoto:false
                                              resolutionAspectRatio:_resolutionAspectRatio
-                                             needCrop:_enableLivePhoto || _secondCameraDevice != nil
+                                             needCrop:true
                                              completionHandler:^(NSArray *_Nullable paths, NSError *_Nullable error) {
     typeof(self) strongSelf = weakSelf;
     if (!strongSelf) return;
@@ -497,7 +499,7 @@ NSString *const errorMethod = @"error";
     } else {
       NSAssert(path, @"Path must not be nil if no error.");
       self.secondCameraCaptures = paths;
-      if (self.mainCameraCaptures != nil)
+      if (self.mainCameraCaptures != nil && (!self.enableLivePhoto || self.livePhotoMovieSaveComplete))
       {
         [result sendSuccessWithData:[self.mainCameraCaptures arrayByAddingObjectsFromArray:paths]];
       }
@@ -567,6 +569,7 @@ NSString *const errorMethod = @"error";
                                             atTime:presentTime
                                          withInput:writerInput];
         NSAssert(appendSuccess, @"Failed to append");
+        CFRelease(buffer);
         
         i++;
       } else {
@@ -762,7 +765,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   }
   if (output == _captureVideoOutput) {
     CVPixelBufferRef newBuffer = NULL;
-    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9 || _videoCaptureSession.sessionPreset != AVCaptureSessionPresetInputPriority) {
+    if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9) {
       newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     } else {
       CVPixelBufferRef tempBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
@@ -1001,6 +1004,21 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   for (AVCaptureOutput *output in [_audioCaptureSession outputs]) {
     [_audioCaptureSession removeOutput:output];
   }
+  if (@available(iOS 13.0, *)) {
+    for (AVCaptureConnection *connection in [_videoCaptureSession connections]) {
+      [_videoCaptureSession removeConnection:connection];
+    }
+    for (AVCaptureConnection *connection in [_audioCaptureSession connections]) {
+      [_audioCaptureSession removeConnection:connection];
+    }
+  }
+  [_livePhotoBuffer clean];
+  _livePhotoBuffer = nil;
+  _renderUtilities = nil;
+  _videoCaptureSession = nil;
+  _audioCaptureSession = nil;
+  _captureDevice = nil;
+  _secondCameraDevice = nil;
 }
 
 - (void)dealloc {
