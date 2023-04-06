@@ -426,9 +426,11 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         {
           if (camera != null) {
             camera.dispose();
+            camera = null;
           }
           if (secondCamera != null) {
             secondCamera.dispose();
+            secondCamera = null;
           }
           result.success(null);
           break;
