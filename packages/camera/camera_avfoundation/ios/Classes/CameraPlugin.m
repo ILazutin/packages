@@ -140,7 +140,12 @@
   } else if ([@"create" isEqualToString:call.method]) {
     [self handleCreateMethodCall:call result:result];
   } else if ([@"multiCamSupported" isEqualToString:call.method]) {
-    [result sendSuccessWithData:[AVCaptureMultiCamSession isMultiCamSupported]];
+    if (@available(iOS 13.0, *)) {
+      if ([AVCaptureMultiCamSession isMultiCamSupported]) {
+        [result sendSuccessWithData:[NSNumber numberWithBool:YES]];
+      }
+    }
+    [result sendSuccessWithData:[NSNumber numberWithBool:NO]];
   } else if ([@"startImageStream" isEqualToString:call.method]) {
     [_camera startImageStreamWithMessenger:_messenger];
     [result sendSuccess];
