@@ -139,7 +139,7 @@
     [result sendSuccessWithData:reply];
   } else if ([@"create" isEqualToString:call.method]) {
     [self handleCreateMethodCall:call result:result];
-  } else if ([@"multiCamSupported" isEqualToString:call.method]) {
+  } else if ([@"isMultiCamSupported" isEqualToString:call.method]) {
     if (@available(iOS 13.0, *)) {
       if ([AVCaptureMultiCamSession isMultiCamSupported]) {
         [result sendSuccessWithData:[NSNumber numberWithBool:YES]];
