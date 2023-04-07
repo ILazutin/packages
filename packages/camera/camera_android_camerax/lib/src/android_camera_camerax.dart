@@ -108,6 +108,11 @@ class AndroidCameraCameraX extends CameraPlatform {
     return cameraDescriptions;
   }
 
+  @override
+  Future<bool> isMultiCamSupported() async {
+    return true;
+  }
+
   /// Creates an uninitialized camera instance and returns the camera ID.
   ///
   /// In the CameraX library, cameras are accessed by combining [UseCase]s

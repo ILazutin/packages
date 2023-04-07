@@ -84,6 +84,18 @@ class MethodChannelCamera extends CameraPlatform {
   }
 
   @override
+  Future<bool> isMultiCamSupported() async {
+    try {
+      final bool? available =
+          await _channel.invokeMethod<bool>('isMultiCamSupported');
+
+      return available ?? false;
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  @override
   Future<int> createCamera(
     CameraDescription cameraDescription,
     ResolutionPreset? resolutionPreset,

@@ -46,6 +46,11 @@ abstract class CameraPlatform extends PlatformInterface {
     throw UnimplementedError('availableCameras() is not implemented.');
   }
 
+  /// Completes with result of supported multicam session on device.
+  Future<bool> isMultiCamSupported() {
+    throw UnimplementedError('isMultiCamSupported() is not implemented.');
+  }
+
   /// Creates an uninitialized camera instance and returns the cameraId.
   Future<int> createCamera(
     CameraDescription cameraDescription,

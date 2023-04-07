@@ -197,6 +197,11 @@ class CameraPlugin extends CameraPlatform {
   }
 
   @override
+  Future<bool> isMultiCamSupported() async {
+    return false;
+  }
+
+  @override
   Future<int> createCamera(
     CameraDescription cameraDescription,
     ResolutionPreset? resolutionPreset,

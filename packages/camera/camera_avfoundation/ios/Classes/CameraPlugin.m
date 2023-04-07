@@ -139,6 +139,8 @@
     [result sendSuccessWithData:reply];
   } else if ([@"create" isEqualToString:call.method]) {
     [self handleCreateMethodCall:call result:result];
+  } else if ([@"multiCamSupported" isEqualToString:call.method]) {
+    [result sendSuccessWithData:[AVCaptureMultiCamSession isMultiCamSupported]];
   } else if ([@"startImageStream" isEqualToString:call.method]) {
     [_camera startImageStreamWithMessenger:_messenger];
     [result sendSuccess];

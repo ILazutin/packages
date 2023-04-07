@@ -28,6 +28,11 @@ Future<List<CameraDescription>> availableCameras() async {
   return CameraPlatform.instance.availableCameras();
 }
 
+/// Completes with result of supported multicam session on device.
+Future<bool> isMultiCamSupported() async {
+  return CameraPlatform.instance.isMultiCamSupported();
+}
+
 // TODO(stuartmorgan): Remove this once the package requires 2.10, where the
 // dart:async `unawaited` accepts a nullable future.
 void _unawaited(Future<void>? future) {}
@@ -412,7 +417,8 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
     try {
       value = value.copyWith(isTakingPicture: true);
-      final List<XFile> files = await CameraPlatform.instance.takePicture(_cameraId);
+      final List<XFile> files =
+          await CameraPlatform.instance.takePicture(_cameraId);
       value = value.copyWith(isTakingPicture: false);
       return files;
     } on PlatformException catch (e) {
