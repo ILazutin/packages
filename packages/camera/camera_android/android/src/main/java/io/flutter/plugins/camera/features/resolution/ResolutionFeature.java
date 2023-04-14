@@ -5,11 +5,9 @@
 package io.flutter.plugins.camera.features.resolution;
 
 import static java.lang.Math.max;
-import static java.lang.Math.min;
 
 import android.annotation.TargetApi;
 import android.graphics.ImageFormat;
-import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;

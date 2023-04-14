@@ -4,12 +4,20 @@
 
 package io.flutter.plugins.camera;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
+import android.os.Handler;
+import android.os.HandlerThread;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 
@@ -17,11 +25,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /** Provides various utilities for camera. */
 public final class CameraUtils {
 
-  private CameraUtils() {}
+  private static Handler backgroundHandler;
+
+  /** An additional thread for running tasks that shouldn't block the UI. */
+  private static HandlerThread backgroundHandlerThread;
+
+  private CameraUtils() {
+  }
 
   /**
    * Gets the {@link CameraManager} singleton.
@@ -55,7 +70,7 @@ public final class CameraUtils {
         return "landscapeRight";
       default:
         throw new UnsupportedOperationException(
-            "Could not serialize device orientation: " + orientation.toString());
+                "Could not serialize device orientation: " + orientation.toString());
     }
   }
 
@@ -82,7 +97,7 @@ public final class CameraUtils {
         return PlatformChannel.DeviceOrientation.LANDSCAPE_RIGHT;
       default:
         throw new UnsupportedOperationException(
-            "Could not deserialize device orientation: " + orientation);
+                "Could not deserialize device orientation: " + orientation);
     }
   }
 
@@ -94,7 +109,7 @@ public final class CameraUtils {
    * @throws CameraAccessException when the camera could not be accessed.
    */
   public static List<Map<String, Object>> getAvailableCameras(Activity activity)
-      throws CameraAccessException {
+          throws CameraAccessException {
     CameraManager cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     String[] cameraNames = cameraManager.getCameraIdList();
     List<Map<String, Object>> cameras = new ArrayList<>();
@@ -130,5 +145,143 @@ public final class CameraUtils {
       cameras.add(details);
     }
     return cameras;
+  }
+
+  public static boolean isMultiCamSupported(Activity activity) throws CameraAccessException {
+    List<Map<String, Object>> cameras = getAvailableCameras(activity);
+
+    if (cameras.size() <= 1) return false;
+
+    CameraManager cameraManager = getCameraManager(activity);
+
+    final CameraDevice[] initializedCameras = new CameraDevice[2];
+
+    final boolean[] isMultiCamSupported = {true};
+
+    if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+      return false;
+    }
+
+    String firstCameraName = "";
+    String secondCameraName = "";
+    for (Map<String, Object> camera : cameras) {
+      if (firstCameraName.isEmpty() && Objects.requireNonNull(camera.get("lensFacing")).toString().equals("back")) {
+        firstCameraName = Objects.requireNonNull(camera.get("name")).toString();
+      }
+
+      if (secondCameraName.isEmpty() && Objects.requireNonNull(camera.get("lensFacing")).toString().equals("front")) {
+        secondCameraName = Objects.requireNonNull(camera.get("name")).toString();
+      }
+    }
+
+    if (firstCameraName.isEmpty() || secondCameraName.isEmpty()) {
+      return false;
+    }
+
+    startBackgroundThread();
+
+    cameraManager.openCamera(firstCameraName,
+            new CameraDevice.StateCallback() {
+              @Override
+              public void onOpened(@NonNull CameraDevice device) {
+                initializedCameras[0] = device;
+              }
+
+              @Override
+              public void onClosed(@NonNull CameraDevice camera) {
+                initializedCameras[0] = null;
+              }
+
+              @Override
+              public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                initializedCameras[0].close();
+                initializedCameras[0] = null;
+              }
+
+              @Override
+              public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
+                switch (errorCode) {
+                  case ERROR_MAX_CAMERAS_IN_USE:
+                    isMultiCamSupported[0] = false;
+                    break;
+                  default:
+                    break;
+                }
+
+              }
+            }, backgroundHandler);
+
+    if (initializedCameras[0] == null) {
+      stopBackgroundThread();
+      return false;
+    }
+
+    // Second camera
+    cameraManager.openCamera(secondCameraName,
+            new CameraDevice.StateCallback() {
+              @Override
+              public void onOpened(@NonNull CameraDevice device) {
+                initializedCameras[1] = device;
+              }
+
+              @Override
+              public void onClosed(@NonNull CameraDevice camera) {
+                initializedCameras[1] = null;
+              }
+
+              @Override
+              public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                initializedCameras[1].close();
+                initializedCameras[1] = null;
+              }
+
+              @Override
+              public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
+                switch (errorCode) {
+                  case ERROR_MAX_CAMERAS_IN_USE:
+                    isMultiCamSupported[0] = false;
+                    break;
+                  default:
+                    break;
+                }
+
+              }
+            }, backgroundHandler);
+
+    stopBackgroundThread();
+
+    if (initializedCameras[0] != null) {
+      initializedCameras[0].close();
+      initializedCameras[0] = null;
+    }
+    if (initializedCameras[1] != null) {
+      initializedCameras[1].close();
+      initializedCameras[1] = null;
+    }
+
+    return isMultiCamSupported[0];
+  }
+
+  private static void startBackgroundThread() {
+    if (backgroundHandlerThread != null) {
+      return;
+    }
+
+    backgroundHandlerThread = Camera.HandlerThreadFactory.create("CameraBackground");
+    try {
+      backgroundHandlerThread.start();
+    } catch (IllegalThreadStateException e) {
+      // Ignore exception in case the thread has already started.
+    }
+    backgroundHandler = Camera.HandlerFactory.create(backgroundHandlerThread.getLooper());
+  }
+
+  /** Stops the background thread and its {@link Handler}. */
+  private static void stopBackgroundThread() {
+    if (backgroundHandlerThread != null) {
+      backgroundHandlerThread.quitSafely();
+    }
+    backgroundHandlerThread = null;
+    backgroundHandler = null;
   }
 }

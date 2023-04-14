@@ -75,7 +75,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         break;
       case "isMultiCamSupported":
         try {
-          result.success(true);
+          result.success(CameraUtils.isMultiCamSupported(activity));
         } catch (Exception e) {
           handleException(e, result);
         }

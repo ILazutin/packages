@@ -223,7 +223,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       enableAudio: enableAudio,
       enableLivePhoto: true,
       livePhotoMaxDuration: const Duration(seconds: 4),
-      secondCameraDescription: secondCameraDescription
+      secondCameraDescription: (await CameraPlatform.instance.isMultiCamSupported()) ? secondCameraDescription : null
     );
 
     CameraPlatform.instance
