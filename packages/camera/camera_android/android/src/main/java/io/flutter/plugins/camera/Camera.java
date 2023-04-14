@@ -339,23 +339,24 @@ class Camera
           oldBitmap.recycle();
         }
         livePhotoQueue.add(bitmap);
-        if (previewSurface.isValid()) {
-          flutterTexture.surfaceTexture().setDefaultBufferSize(image.getHeight(), image.getWidth());
-          Canvas canvas = previewSurface.lockCanvas(null);
-          if (canvas != null) {
-            Matrix matrix = new Matrix();
-            int rotation = 90;
-            float px = canvas.getWidth()/2;
-            float py = canvas.getHeight()/2;
-            matrix.postTranslate(-bitmap.getWidth()/2, -bitmap.getHeight()/2);
-            matrix.postRotate(rotation);
-            matrix.postTranslate(px, py);
-            matrix.postScale(bitmap.getWidth()/bitmap.getHeight(), 1);
-            canvas.drawBitmap(bitmap, matrix, null);
 
-            previewSurface.unlockCanvasAndPost(canvas);
-          }
-        }
+//        if (previewSurface.isValid()) {
+//          flutterTexture.surfaceTexture().setDefaultBufferSize(image.getHeight(), image.getWidth());
+//          Canvas canvas = previewSurface.lockCanvas(null);
+//          if (canvas != null) {
+//            Matrix matrix = new Matrix();
+//            int rotation = 90;
+//            float px = canvas.getWidth()/2;
+//            float py = canvas.getHeight()/2;
+//            matrix.postTranslate(-bitmap.getWidth()/2, -bitmap.getHeight()/2);
+//            matrix.postRotate(rotation);
+//            matrix.postTranslate(px, py);
+//            matrix.postScale(bitmap.getWidth()/bitmap.getHeight(), 1);
+//            canvas.drawBitmap(bitmap, matrix, null);
+//
+//            previewSurface.unlockCanvasAndPost(canvas);
+//          }
+//        }
         image.close();
       }, backgroundHandler);
     }
@@ -458,6 +459,7 @@ class Camera
 
     if (enableLivePhoto) {
       previewRequestBuilder.addTarget(livePhotoImageStreamReader.getSurface());
+      previewRequestBuilder.addTarget(previewSurface);
     } else if (previewSurface != null) {
       previewRequestBuilder.addTarget(previewSurface);
     }
@@ -517,6 +519,7 @@ class Camera
       List<OutputConfiguration> configs = new ArrayList<>();
       if (enableLivePhoto) {
         configs.add(new OutputConfiguration(livePhotoImageStreamReader.getSurface()));
+        configs.add(new OutputConfiguration(previewSurface));
       } else if (previewSurface != null) {
         configs.add(new OutputConfiguration(previewSurface));
       }
@@ -529,6 +532,7 @@ class Camera
       List<Surface> surfaceList = new ArrayList<>();
       if (enableLivePhoto) {
         surfaceList.add(livePhotoImageStreamReader.getSurface());
+        surfaceList.add(previewSurface);
       } else if (previewSurface != null) {
         surfaceList.add(previewSurface);
       }
