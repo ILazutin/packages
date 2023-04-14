@@ -180,73 +180,81 @@ public final class CameraUtils {
 
     startBackgroundThread();
 
-    cameraManager.openCamera(firstCameraName,
-            new CameraDevice.StateCallback() {
-              @Override
-              public void onOpened(@NonNull CameraDevice device) {
-                initializedCameras[0] = device;
-              }
-
-              @Override
-              public void onClosed(@NonNull CameraDevice camera) {
-                initializedCameras[0] = null;
-              }
-
-              @Override
-              public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                initializedCameras[0].close();
-                initializedCameras[0] = null;
-              }
-
-              @Override
-              public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                switch (errorCode) {
-                  case ERROR_MAX_CAMERAS_IN_USE:
-                    isMultiCamSupported[0] = false;
-                    break;
-                  default:
-                    break;
+    try {
+      cameraManager.openCamera(firstCameraName,
+              new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(@NonNull CameraDevice device) {
+                  initializedCameras[0] = device;
                 }
 
-              }
-            }, backgroundHandler);
+                @Override
+                public void onClosed(@NonNull CameraDevice camera) {
+                  initializedCameras[0] = null;
+                }
+
+                @Override
+                public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                  initializedCameras[0].close();
+                  initializedCameras[0] = null;
+                }
+
+                @Override
+                public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
+                  switch (errorCode) {
+                    case ERROR_MAX_CAMERAS_IN_USE:
+                      isMultiCamSupported[0] = false;
+                      break;
+                    default:
+                      break;
+                  }
+
+                }
+              }, backgroundHandler);
+    } catch (Exception e) {
+      stopBackgroundThread();
+      return false;
+    }
 
     if (initializedCameras[0] == null) {
       stopBackgroundThread();
       return false;
     }
 
-    // Second camera
-    cameraManager.openCamera(secondCameraName,
-            new CameraDevice.StateCallback() {
-              @Override
-              public void onOpened(@NonNull CameraDevice device) {
-                initializedCameras[1] = device;
-              }
-
-              @Override
-              public void onClosed(@NonNull CameraDevice camera) {
-                initializedCameras[1] = null;
-              }
-
-              @Override
-              public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                initializedCameras[1].close();
-                initializedCameras[1] = null;
-              }
-
-              @Override
-              public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                switch (errorCode) {
-                  case ERROR_MAX_CAMERAS_IN_USE:
-                    isMultiCamSupported[0] = false;
-                    break;
-                  default:
-                    break;
+    try {
+      cameraManager.openCamera(secondCameraName,
+              new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(@NonNull CameraDevice device) {
+                  initializedCameras[1] = device;
                 }
 
-              }
-            }, backgroundHandler);
+                @Override
+                public void onClosed(@NonNull CameraDevice camera) {
+                  initializedCameras[1] = null;
+                }
+
+                @Override
+                public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+                  initializedCameras[1].close();
+                  initializedCameras[1] = null;
+                }
+
+                @Override
+                public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
+                  switch (errorCode) {
+                    case ERROR_MAX_CAMERAS_IN_USE:
+                      isMultiCamSupported[0] = false;
+                      break;
+                    default:
+                      break;
+                  }
+
+                }
+              }, backgroundHandler);
+    } catch (CameraAccessException e) {
+      isMultiCamSupported[0] = false;
+    }
 
     stopBackgroundThread();
 
