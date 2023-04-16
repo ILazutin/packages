@@ -15,11 +15,15 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 import androidx.core.app.ActivityCompat;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
+import io.flutter.plugin.common.MethodChannel;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,10 +34,10 @@ import java.util.Objects;
 /** Provides various utilities for camera. */
 public final class CameraUtils {
 
-  private static Handler backgroundHandler;
-
+  private static Handler[] backgroundHandlers = new Handler[2];
   /** An additional thread for running tasks that shouldn't block the UI. */
-  private static HandlerThread backgroundHandlerThread;
+  private static HandlerThread[] backgroundHandlerThreads = new HandlerThread[2];
+  private static final CameraDevice[] initializedCameras = new CameraDevice[2];
 
   private CameraUtils() {
   }
@@ -147,19 +151,21 @@ public final class CameraUtils {
     return cameras;
   }
 
-  public static boolean isMultiCamSupported(Activity activity) throws CameraAccessException {
+  public static void isMultiCamSupported(Activity activity, @NonNull final MethodChannel.Result result) throws CameraAccessException {
+    final String TAG = "Camera";
+
     List<Map<String, Object>> cameras = getAvailableCameras(activity);
 
-    if (cameras.size() <= 1) return false;
+    if (cameras.size() <= 1) {
+      result.success(false);
+      return;
+    }
 
     CameraManager cameraManager = getCameraManager(activity);
 
-    final CameraDevice[] initializedCameras = new CameraDevice[2];
-
-    final boolean[] isMultiCamSupported = {true};
-
     if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-      return false;
+      result.success(false);
+      return;
     }
 
     String firstCameraName = "";
@@ -175,50 +181,62 @@ public final class CameraUtils {
     }
 
     if (firstCameraName.isEmpty() || secondCameraName.isEmpty()) {
-      return false;
+      result.success(false);
+      return;
     }
 
-    startBackgroundThread();
+    startBackgroundThread(0);
+    startBackgroundThread(1);
 
     try {
       cameraManager.openCamera(firstCameraName,
               new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(@NonNull CameraDevice device) {
+                  Log.i(TAG, "first | open | onOpened");
                   initializedCameras[0] = device;
+                  if (initializedCameras[1] != null) {
+                    initializedCameras[0].close();
+                    initializedCameras[1].close();
+                    result.success(true);
+                  }
                 }
 
                 @Override
                 public void onClosed(@NonNull CameraDevice camera) {
+                  Log.i(TAG, "first | open | onClosed");
                   initializedCameras[0] = null;
+                  stopBackgroundThread(0);
                 }
 
                 @Override
                 public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                  initializedCameras[0].close();
-                  initializedCameras[0] = null;
+                  Log.i(TAG, "first | open | onDisconnected");
+                  if (backgroundHandlers[0] != null && initializedCameras[0] != null) {
+                    initializedCameras[0].close();
+                    initializedCameras[0] = null;
+                  }
                 }
 
                 @Override
                 public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                  switch (errorCode) {
-                    case ERROR_MAX_CAMERAS_IN_USE:
-                      isMultiCamSupported[0] = false;
-                      break;
-                    default:
-                      break;
+                  Log.i(TAG, "first | open | onError");
+                  cameraDevice.close();
+                  if (initializedCameras[1] != null) {
+                    try {
+                      initializedCameras[1].close();
+                      initializedCameras[1] = null;
+                    } catch (Exception ignored) {
+                    }
                   }
-
+                  result.success(false);
                 }
-              }, backgroundHandler);
+              }, backgroundHandlers[0]);
     } catch (Exception e) {
-      stopBackgroundThread();
-      return false;
-    }
-
-    if (initializedCameras[0] == null) {
-      stopBackgroundThread();
-      return false;
+      stopBackgroundThread(0);
+      stopBackgroundThread(1);
+      result.success(false);
+      return;
     }
 
     try {
@@ -226,70 +244,107 @@ public final class CameraUtils {
               new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(@NonNull CameraDevice device) {
+                  Log.i(TAG, "second | open | onOpened");
                   initializedCameras[1] = device;
+                  if (initializedCameras[0] != null) {
+                    initializedCameras[0].close();
+                    initializedCameras[1].close();
+                    result.success(true);
+                  }
                 }
 
                 @Override
                 public void onClosed(@NonNull CameraDevice camera) {
+                  Log.i(TAG, "second | open | onClosed");
                   initializedCameras[1] = null;
+                  stopBackgroundThread(1);
                 }
 
                 @Override
                 public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                  initializedCameras[1].close();
-                  initializedCameras[1] = null;
+                  Log.i(TAG, "second | open | onDisconnected");
+                  if (backgroundHandlers[1] != null && initializedCameras[1] != null) {
+                    initializedCameras[1].close();
+                    initializedCameras[1] = null;
+                  }
                 }
 
                 @Override
                 public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                  switch (errorCode) {
-                    case ERROR_MAX_CAMERAS_IN_USE:
-                      isMultiCamSupported[0] = false;
-                      break;
-                    default:
-                      break;
+                  Log.i(TAG, "second | open | onError");
+                  cameraDevice.close();
+                  if (initializedCameras[0] != null) {
+                    try {
+                      initializedCameras[0].close();
+                      initializedCameras[0] = null;
+                    } catch (Exception ignored) {
+                    }
                   }
-
+                  result.success(false);
                 }
-              }, backgroundHandler);
+              }, backgroundHandlers[1]);
     } catch (CameraAccessException e) {
-      isMultiCamSupported[0] = false;
+      result.success(false);
+      stopBackgroundThread(0);
+      stopBackgroundThread(1);
     }
 
-    stopBackgroundThread();
-
-    if (initializedCameras[0] != null) {
-      initializedCameras[0].close();
-      initializedCameras[0] = null;
-    }
-    if (initializedCameras[1] != null) {
-      initializedCameras[1].close();
-      initializedCameras[1] = null;
-    }
-
-    return isMultiCamSupported[0];
   }
 
-  private static void startBackgroundThread() {
-    if (backgroundHandlerThread != null) {
+  private static void startBackgroundThread(int index) {
+    if (backgroundHandlerThreads[index] != null) {
       return;
     }
 
-    backgroundHandlerThread = Camera.HandlerThreadFactory.create("CameraBackground");
+    backgroundHandlerThreads[index] = HandlerThreadFactory.create("CameraUtilsBackgroundFirst");
     try {
-      backgroundHandlerThread.start();
+      backgroundHandlerThreads[index].start();
     } catch (IllegalThreadStateException e) {
       // Ignore exception in case the thread has already started.
     }
-    backgroundHandler = Camera.HandlerFactory.create(backgroundHandlerThread.getLooper());
+    backgroundHandlers[index] = HandlerFactory.create(backgroundHandlerThreads[index].getLooper());
   }
 
   /** Stops the background thread and its {@link Handler}. */
-  private static void stopBackgroundThread() {
-    if (backgroundHandlerThread != null) {
-      backgroundHandlerThread.quitSafely();
+  private static void stopBackgroundThread(int index) {
+    if (backgroundHandlerThreads[index] != null) {
+      backgroundHandlerThreads[index].quitSafely();
     }
-    backgroundHandlerThread = null;
-    backgroundHandler = null;
+    backgroundHandlerThreads[index] = null;
+    backgroundHandlers[index] = null;
+  }
+
+  /** Factory class that assists in creating a {@link HandlerThread} instance. */
+  static class HandlerThreadFactory {
+    /**
+     * Creates a new instance of the {@link HandlerThread} class.
+     *
+     * <p>This method is visible for testing purposes only and should never be used outside this *
+     * class.
+     *
+     * @param name to give to the HandlerThread.
+     * @return new instance of the {@link HandlerThread} class.
+     */
+    @VisibleForTesting
+    public static HandlerThread create(String name) {
+      return new HandlerThread(name);
+    }
+  }
+
+  /** Factory class that assists in creating a {@link Handler} instance. */
+  static class HandlerFactory {
+    /**
+     * Creates a new instance of the {@link Handler} class.
+     *
+     * <p>This method is visible for testing purposes only and should never be used outside this *
+     * class.
+     *
+     * @param looper to give to the Handler.
+     * @return new instance of the {@link Handler} class.
+     */
+    @VisibleForTesting
+    public static Handler create(Looper looper) {
+      return new Handler(looper);
+    }
   }
 }
