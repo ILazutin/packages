@@ -182,8 +182,10 @@ public class BitmapToVideoEncoder {
 
         Log.d(TAG, "Encoder started");
 
+        boolean needRelease = false;
+
         while(true) {
-            if (mNoMoreFrames && (mEncodeQueue.size() ==  0)) break;
+            if (mNoMoreFrames && (mEncodeQueue.size() == 0)) break;
 
             Bitmap bitmap = mEncodeQueue.poll();
             if (bitmap ==  null) {
@@ -237,11 +239,14 @@ public class BitmapToVideoEncoder {
                     encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
                     mediaMuxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
                     mediaCodec.releaseOutputBuffer(encoderStatus, false);
+                    needRelease = true;
                 }
             }
         }
 
-        release();
+        if (needRelease) {
+            release();
+        }
 
         if (!mAbort) {
             mCallback.onEncodingComplete(mOutputFile);

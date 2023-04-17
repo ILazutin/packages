@@ -8,10 +8,21 @@ import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.media.Image;
 
+import com.google.android.renderscript.Toolkit;
+import com.google.android.renderscript.YuvFormat;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 
 public class ImageUtils {
+
+    public static Bitmap yuv420ToBitmap(Image image) {
+        return Toolkit.INSTANCE.yuvToRgbBitmap(
+                ImageUtils.YUV420toNV21(image),
+                image.getWidth(),
+                image.getHeight(),
+                YuvFormat.NV21);
+    }
 
     public static Bitmap getBitmap(Image image) {
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();

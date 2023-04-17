@@ -309,11 +309,11 @@ class Camera
             1);
 
     if (enableLivePhoto) {
-        livePhotoImageStreamReader = ImageReader.newInstance(
-                resolutionFeature.getPreviewSize().getWidth(),
-                resolutionFeature.getPreviewSize().getHeight(),
-                ImageFormat.JPEG,
-                1);
+      livePhotoImageStreamReader = ImageReader.newInstance(
+              resolutionFeature.getPreviewSize().getWidth(),
+              resolutionFeature.getPreviewSize().getHeight(),
+              ImageFormat.YUV_420_888,
+              1);
 
       int frameRate = 0;
       EncoderProfiles recordingProfile = getRecordingProfile();
@@ -333,30 +333,13 @@ class Camera
         }
 
         Image image = reader.acquireNextImage();
-        Bitmap bitmap = ImageUtils.getBitmap(image);
+        Bitmap bitmap = ImageUtils.yuv420ToBitmap(image);
         if (livePhotoQueue.isAtFullCapacity()) {
           Bitmap oldBitmap = livePhotoQueue.remove();
           oldBitmap.recycle();
         }
         livePhotoQueue.add(bitmap);
 
-//        if (previewSurface.isValid()) {
-//          flutterTexture.surfaceTexture().setDefaultBufferSize(image.getHeight(), image.getWidth());
-//          Canvas canvas = previewSurface.lockCanvas(null);
-//          if (canvas != null) {
-//            Matrix matrix = new Matrix();
-//            int rotation = 90;
-//            float px = canvas.getWidth()/2;
-//            float py = canvas.getHeight()/2;
-//            matrix.postTranslate(-bitmap.getWidth()/2, -bitmap.getHeight()/2);
-//            matrix.postRotate(rotation);
-//            matrix.postTranslate(px, py);
-//            matrix.postScale(bitmap.getWidth()/bitmap.getHeight(), 1);
-//            canvas.drawBitmap(bitmap, matrix, null);
-//
-//            previewSurface.unlockCanvasAndPost(canvas);
-//          }
-//        }
         image.close();
       }, backgroundHandler);
     }
