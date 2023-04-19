@@ -1,7 +1,3 @@
-group 'io.flutter.plugins.camera'
-version '1.0-SNAPSHOT'
-def args = ["-Xlint:deprecation","-Xlint:unchecked"]
-
 buildscript {
     repositories {
         google()
@@ -12,6 +8,15 @@ buildscript {
         classpath 'com.android.tools.build:gradle:7.0.2'
     }
 }
+
+plugins {
+    id 'com.android.library'
+    id 'kotlin-android'
+}
+
+group 'io.flutter.plugins.camera'
+version '1.0-SNAPSHOT'
+def args = ["-Xlint:deprecation","-Xlint:unchecked"]
 
 rootProject.allprojects {
     repositories {
@@ -28,11 +33,18 @@ apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 33
+    buildToolsVersion "33.0.0"
 
     defaultConfig {
         targetSdkVersion 31
         minSdkVersion 21
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17"
+            }
+        }
     }
     lintOptions {
         disable 'AndroidGradlePluginVersion', 'InvalidPackage', 'GradleDependency'
@@ -43,6 +55,14 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    externalNativeBuild {
+        cmake {
+            path file('src/main/java/io/flutter/plugins/camera/features/renderscript/cpp/CMakeLists.txt')
+        }
+    }
 
     testOptions {
         unitTests.includeAndroidResources = true
@@ -60,7 +80,8 @@ android {
 dependencies {
     implementation 'androidx.annotation:annotation:1.5.0'
     implementation 'org.apache.commons:commons-collections4:4.4'
-    implementation files('libs/renderscript-toolkit.aar')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation 'androidx.core:core-ktx:1.6.0'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.mockito:mockito-inline:5.0.0'
     testImplementation 'androidx.test:core:1.4.0'

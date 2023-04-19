@@ -8,8 +8,8 @@ import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.media.Image;
 
-import com.google.android.renderscript.Toolkit;
-import com.google.android.renderscript.YuvFormat;
+import io.flutter.plugins.camera.features.renderscript.Toolkit;
+import io.flutter.plugins.camera.features.renderscript.YuvFormat;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
