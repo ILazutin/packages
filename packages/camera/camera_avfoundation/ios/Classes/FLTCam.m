@@ -98,6 +98,7 @@
 @property(strong, nonatomic) FixedSizeQueue *livePhotoBuffer;
 @property(assign, nonatomic) NSUInteger livePhotoMaxDuration;
 @property(assign, nonatomic) NSInteger livePhotoMovieFps;
+@property(assign, nonatomic) CGSize livePhotoImageSize;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveInProgress;
 @property(assign, nonatomic) BOOL livePhotoMovieSaveComplete;
 @property(readonly, nonatomic) RenderUtilities *renderUtilities;
@@ -531,6 +532,8 @@ NSString *const errorMethod = @"error";
                                  recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4];
   
   [videoSettings setValue:AVVideoCodecTypeH264 forKey:AVVideoCodecKey];
+  [videoSettings setValue:[NSNumber numberWithFloat:_livePhotoImageSize.width] forKey:AVVideoWidthKey];
+  [videoSettings setValue:[NSNumber numberWithFloat:_livePhotoImageSize.height] forKey:AVVideoHeightKey];
   
   NSMutableDictionary* compressionPropertiesDict = [NSMutableDictionary new];
   compressionPropertiesDict[AVVideoProfileLevelKey] = AVVideoProfileLevelH264High40;
@@ -539,8 +542,16 @@ NSString *const errorMethod = @"error";
   AVAssetWriterInput* writerInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
                                                                        outputSettings:videoSettings];
   
+  NSMutableDictionary * pixBufSettings = [[NSMutableDictionary alloc] init];
+  [pixBufSettings setObject: [NSNumber numberWithInt: kCVPixelFormatType_32BGRA]
+                     forKey: (NSString *) kCVPixelBufferPixelFormatTypeKey];
+  [pixBufSettings setObject: [NSNumber numberWithInt: _livePhotoImageSize.width]
+                     forKey: (NSString *) kCVPixelBufferWidthKey];
+  [pixBufSettings setObject: [NSNumber numberWithInt: _livePhotoImageSize.height]
+                     forKey: (NSString *) kCVPixelBufferHeightKey];
+  
   AVAssetWriterInputPixelBufferAdaptor *adaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:writerInput
-                                                                                                                   sourcePixelBufferAttributes:nil];
+    sourcePixelBufferAttributes:pixBufSettings];
   
   NSParameterAssert(writerInput);
   NSParameterAssert([videoWriter canAddInput:writerInput]);
@@ -561,15 +572,24 @@ NSString *const errorMethod = @"error";
     if(writerInput.readyForMoreMediaData){
       
       presentTime = CMTimeMake(i, (int) _livePhotoMovieFps);
-      buffer = CFBridgingRetain([_livePhotoBuffer dequeue]);
+      buffer = (__bridge CVPixelBufferRef)([_livePhotoBuffer dequeue]);
       
       if (buffer != nil) {
+        if (_resolutionAspectRatio != FLTResolutionAspectRatio16_9) {
+          size_t sourceWidth = CVPixelBufferGetWidth(buffer);
+          size_t sourceHeight = CVPixelBufferGetHeight(buffer);
+          
+          size_t finalWidth = sourceWidth;
+          size_t finalHeight = sourceHeight * 3 / 4;
+          
+          buffer = [_renderUtilities scale:buffer toSize:CGSizeMake(finalWidth, finalHeight)];
+        }
+
         BOOL appendSuccess = [self appendToAdapter:adaptor
                                        pixelBuffer:buffer
                                             atTime:presentTime
                                          withInput:writerInput];
         NSAssert(appendSuccess, @"Failed to append");
-        CFRelease(buffer);
         
         i++;
       } else {
@@ -591,7 +611,6 @@ NSString *const errorMethod = @"error";
         
         CVPixelBufferPoolRelease(adaptor.pixelBufferPool);
         
-        NSLog (@"Done");
         break;
       }
     }
@@ -760,6 +779,14 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     uint8_t *copyBaseAddress = CVPixelBufferGetBaseAddress(pixelBufferCopy);
     memcpy(copyBaseAddress, baseAddress, bufferHeight * bytesPerRow);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+    
+    if (_livePhotoImageSize.width == 0) {
+      if (_resolutionAspectRatio == FLTResolutionAspectRatio16_9) {
+        _livePhotoImageSize = CGSizeMake(bufferWidth, bufferHeight);
+      } else {
+        _livePhotoImageSize = CGSizeMake(bufferWidth, bufferHeight * 3 / 4);
+      }
+    }
     
     [_livePhotoBuffer enqueue:CFBridgingRelease(pixelBufferCopy)];
   }
