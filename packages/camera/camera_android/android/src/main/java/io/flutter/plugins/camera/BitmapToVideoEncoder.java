@@ -121,6 +121,8 @@ public class BitmapToVideoEncoder {
         mNoMoreFrames = true;
         encode();
         release();
+
+        mCallback.onEncodingComplete(mOutputFile);
     }
 
     public void abortEncoding() {
@@ -205,12 +207,8 @@ public class BitmapToVideoEncoder {
             }
         }
 
-        if (mNoMoreFrames || mAbort) {
+        if (mAbort) {
             release();
-        }
-
-        if (!mAbort && mNoMoreFrames) {
-            mCallback.onEncodingComplete(mOutputFile);
         }
     }
 
