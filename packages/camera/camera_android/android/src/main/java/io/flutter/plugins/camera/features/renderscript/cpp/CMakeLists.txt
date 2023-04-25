@@ -84,6 +84,7 @@ add_library(# Sets the name of the library.
             Lut3d.cpp
             RenderScriptToolkit.cpp
             Resize.cpp
+            RgbToYuv.cpp
             TaskProcessor.cpp
             Utils.cpp
             YuvToRgb.cpp

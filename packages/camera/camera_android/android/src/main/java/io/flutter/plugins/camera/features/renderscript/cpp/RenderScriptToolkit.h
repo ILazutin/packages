@@ -531,6 +531,26 @@ class RenderScriptToolkit {
      */
     void yuvToRgb(const uint8_t* _Nonnull in, uint8_t* _Nonnull out, size_t sizeX, size_t sizeY,
                   YuvFormat format);
+
+    /**
+     * Convert an image from YUV to RGB.
+     *
+     * Converts an Android YUV buffer to RGB. The input allocation should be
+     * supplied in a supported YUV format as a YUV cell Allocation.
+     * The output is RGBA; the alpha channel will be set to 255.
+     *
+     * Note that for YV12 and a sizeX that's not a multiple of 32, the
+     * RenderScript Intrinsic may not have converted the image correctly.
+     * This Toolkit method should.
+     *
+     * @param in The array of the image pixels to be converted.
+     * @param out The buffer that receives the converted image.
+     * @param sizeX The width in pixels of the image. Must be even.
+     * @param sizeY The height in pixels of the image.
+     * @param format Either YV12 or NV21.
+     */
+    void rgbToYuv(const uint32_t* _Nonnull in, uint8_t* _Nonnull out, size_t sizeX, size_t sizeY,
+                  YuvFormat format);
 };
 
 }  // namespace renderscript

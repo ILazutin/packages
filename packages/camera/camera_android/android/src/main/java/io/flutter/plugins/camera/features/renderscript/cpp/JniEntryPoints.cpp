@@ -478,3 +478,14 @@ extern "C" JNIEXPORT void JNICALL Java_io_flutter_plugins_camera_features_render
     toolkit->yuvToRgb(input.get(), output.get(), size_x, size_y,
                       static_cast<RenderScriptToolkit::YuvFormat>(format));
 }
+
+extern "C" JNIEXPORT void JNICALL Java_io_flutter_plugins_camera_features_renderscript_Toolkit_nativeRgbToYuv(
+        JNIEnv* env, jobject /*thiz*/, jlong native_handle, jintArray input_array,
+        jbyteArray output_array, jint size_x, jint size_y, jint format) {
+    RenderScriptToolkit* toolkit = reinterpret_cast<RenderScriptToolkit*>(native_handle);
+    IntArrayGuard input{env, input_array};
+    ByteArrayGuard output{env, output_array};
+
+    toolkit->rgbToYuv(reinterpret_cast<const uint32_t *>(input.get()), output.get(), size_x, size_y,
+                      static_cast<RenderScriptToolkit::YuvFormat>(format));
+}

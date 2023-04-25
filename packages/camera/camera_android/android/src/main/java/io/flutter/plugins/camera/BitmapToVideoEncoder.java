@@ -7,12 +7,7 @@ import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.os.Build;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
 import android.util.Log;
-
-import androidx.annotation.VisibleForTesting;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,15 +15,11 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CountDownLatch;
+
+import io.flutter.plugins.camera.features.renderscript.YuvFormat;
 
 public class BitmapToVideoEncoder {
     private static final String TAG = BitmapToVideoEncoder.class.getSimpleName();
-
-    private Handler backgroundHandler;
-
-    /** An additional thread for running tasks that shouldn't block the UI. */
-    private HandlerThread backgroundHandlerThread;
 
     private IBitmapToVideoEncoderCallback mCallback;
     private File mOutputFile;
@@ -36,10 +27,7 @@ public class BitmapToVideoEncoder {
     private MediaCodec mediaCodec;
     private MediaMuxer mediaMuxer;
 
-    private Object mFrameSync = new Object();
-    private CountDownLatch mNewFrameLatch;
-
-    private static final String MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
+    private static final String MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC;
     private static int mWidth;
     private static int mHeight;
     private static final int BIT_RATE = 16000000;
@@ -52,6 +40,7 @@ public class BitmapToVideoEncoder {
     private int mTrackIndex;
     private boolean mNoMoreFrames = false;
     private boolean mAbort = false;
+    private YuvFormat imageFormat = YuvFormat.NV21;
 
     public interface IBitmapToVideoEncoderCallback {
         void onEncodingComplete(File outputFile);
@@ -61,15 +50,6 @@ public class BitmapToVideoEncoder {
         mCallback = callback;
         this.frameRate = frameRate;
         this.orientation = orientation;
-        startBackgroundThread();
-    }
-
-    public boolean isEncodingStarted() {
-        return (mediaCodec != null) && (mediaMuxer != null) && !mNoMoreFrames && !mAbort;
-    }
-
-    public int getActiveBitmaps() {
-        return mEncodeQueue.size();
     }
 
     public void startEncoding(int width, int height, File outputFile) {
@@ -97,6 +77,13 @@ public class BitmapToVideoEncoder {
         } catch (Exception e) {
             colorFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible;
         }
+        if (colorFormat == 0) {
+            colorFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible;
+        }
+
+        if (colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar) {
+            imageFormat = YuvFormat.YV12;
+        }
 
         try {
             mediaCodec = MediaCodec.createByCodecName(codecInfo.getName());
@@ -110,9 +97,6 @@ public class BitmapToVideoEncoder {
         mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
         mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            mediaFormat.setInteger(MediaFormat.KEY_ROTATION, orientation);
-        }
         mediaCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mediaCodec.start();
         try {
@@ -125,7 +109,6 @@ public class BitmapToVideoEncoder {
 
         Log.d(TAG, "Initialization complete. Starting encoder...");
 
-        backgroundHandler.post(this::encode);
     }
 
     public void stopEncoding() {
@@ -136,12 +119,8 @@ public class BitmapToVideoEncoder {
         Log.d(TAG, "Stopping encoding");
 
         mNoMoreFrames = true;
-
-        synchronized (mFrameSync) {
-            if ((mNewFrameLatch != null) && (mNewFrameLatch.getCount() > 0)) {
-                mNewFrameLatch.countDown();
-            }
-        }
+        encode();
+        release();
     }
 
     public void abortEncoding() {
@@ -154,12 +133,6 @@ public class BitmapToVideoEncoder {
         mNoMoreFrames = true;
         mAbort = true;
         mEncodeQueue = new ConcurrentLinkedQueue<Bitmap>(); // Drop all frames
-
-        synchronized (mFrameSync) {
-            if ((mNewFrameLatch != null) && (mNewFrameLatch.getCount() > 0)) {
-                mNewFrameLatch.countDown();
-            }
-        }
     }
 
     public void queueFrame(Bitmap bitmap) {
@@ -168,87 +141,75 @@ public class BitmapToVideoEncoder {
             return;
         }
 
-        Log.d(TAG, "Queueing frame");
         mEncodeQueue.add(bitmap);
-
-        synchronized (mFrameSync) {
-            if ((mNewFrameLatch != null) && (mNewFrameLatch.getCount() > 0)) {
-                mNewFrameLatch.countDown();
-            }
-        }
+        encode();
     }
 
     private void encode() {
 
-        Log.d(TAG, "Encoder started");
+        if (mNoMoreFrames) {
+            return;
+        }
 
-        boolean needRelease = false;
+        if (mEncodeQueue.size() == 0) return;
 
-        while(true) {
-            if (mNoMoreFrames && (mEncodeQueue.size() == 0)) break;
+        Bitmap bitmap = mEncodeQueue.poll();
+        if (bitmap == null) {
+            bitmap = mEncodeQueue.poll();
+        }
 
-            Bitmap bitmap = mEncodeQueue.poll();
-            if (bitmap ==  null) {
-                synchronized (mFrameSync) {
-                    mNewFrameLatch = new CountDownLatch(1);
-                }
+        if (bitmap == null) return;
 
-                try {
-                    mNewFrameLatch.await();
-                } catch (InterruptedException e) {}
+        Bitmap scaledBitmap = ImageUtils.getScaledBitmap(bitmap, mWidth, mHeight);
 
-                bitmap = mEncodeQueue.poll();
-            }
+        byte[] byteConvertFrame = ImageUtils.getNV21(
+                scaledBitmap.getWidth(), scaledBitmap.getHeight(), scaledBitmap, imageFormat);
 
-            if (bitmap == null) continue;
+        long TIMEOUT_USEC = 0;
+        int inputBufIndex = mediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
+        long ptsUsec = computePresentationTime(mGenerateIndex, frameRate);
+        if (inputBufIndex >= 0) {
+            final ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufIndex);
+            inputBuffer.clear();
+            inputBuffer.put(byteConvertFrame);
+            mediaCodec.queueInputBuffer(inputBufIndex, 0, byteConvertFrame.length, ptsUsec, 0);
+            mGenerateIndex++;
+        }
+        bitmap.recycle();
+        scaledBitmap.recycle();
 
-            Bitmap scaledBitmap = ImageUtils.getScaledBitmap(bitmap, mWidth, mHeight);
-
-            byte[] byteConvertFrame = ImageUtils.getNV21(scaledBitmap.getWidth(), scaledBitmap.getHeight(), scaledBitmap);
-
-            long TIMEOUT_USEC = 0;
-            int inputBufIndex = mediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
-            long ptsUsec = computePresentationTime(mGenerateIndex, frameRate);
-            if (inputBufIndex >= 0) {
-                final ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufIndex);
-                inputBuffer.clear();
-                inputBuffer.put(byteConvertFrame);
-                mediaCodec.queueInputBuffer(inputBufIndex, 0, byteConvertFrame.length, ptsUsec, 0);
-                mGenerateIndex++;
-            }
-            bitmap.recycle();
-
-            MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
-            int encoderStatus = mediaCodec.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
-            if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                // no output available yet
-                Log.e(TAG, "No output from encoder available");
-            } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                // not expected for an encoder
-                MediaFormat newFormat = mediaCodec.getOutputFormat();
-                mTrackIndex = mediaMuxer.addTrack(newFormat);
-                mediaMuxer.start();
-            } else if (encoderStatus < 0) {
-                Log.e(TAG, "unexpected result from encoder.dequeueOutputBuffer: " + encoderStatus);
-            } else if (mBufferInfo.size != 0) {
-                ByteBuffer encodedData = mediaCodec.getOutputBuffer(encoderStatus);
-                if (encodedData == null) {
-                    Log.e(TAG, "encoderOutputBuffer " + encoderStatus + " was null");
-                } else {
-                    encodedData.position(mBufferInfo.offset);
-                    encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
-                    mediaMuxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
-                    mediaCodec.releaseOutputBuffer(encoderStatus, false);
-                    needRelease = true;
-                }
+        MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
+        int encoderStatus = mediaCodec.dequeueOutputBuffer(mBufferInfo, 10000);
+        if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
+            // no output available yet
+            Log.e(TAG, "No output from encoder available");
+        } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+            // not expected for an encoder
+            MediaFormat newFormat = mediaCodec.getOutputFormat();
+            mTrackIndex = mediaMuxer.addTrack(newFormat);
+            mediaMuxer.start();
+            mBufferInfo = new MediaCodec.BufferInfo();
+            encoderStatus = mediaCodec.dequeueOutputBuffer(mBufferInfo, 10000);
+        } else if (encoderStatus < 0) {
+            Log.e(TAG, "unexpected result from encoder.dequeueOutputBuffer: " + encoderStatus);
+        }
+        if (mBufferInfo.size != 0) {
+            ByteBuffer encodedData = mediaCodec.getOutputBuffer(encoderStatus);
+            if (encodedData == null) {
+                Log.e(TAG, "encoderOutputBuffer " + encoderStatus + " was null");
+            } else {
+                encodedData.position(mBufferInfo.offset);
+                encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
+                mediaMuxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
+                mediaCodec.releaseOutputBuffer(encoderStatus, false);
             }
         }
 
-        if (needRelease) {
+        if (mNoMoreFrames || mAbort) {
             release();
         }
 
-        if (!mAbort) {
+        if (!mAbort && mNoMoreFrames) {
             mCallback.onEncodingComplete(mOutputFile);
         }
     }
@@ -302,67 +263,14 @@ public class BitmapToVideoEncoder {
     }
 
     private static boolean isRecognizedFormat(int colorFormat) {
-        // these are the formats we know how to handle for
-        return colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible;
+        return colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
+                || colorFormat == MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar;
     }
 
     private long computePresentationTime(long frameIndex, int framerate) {
         return 132 + frameIndex * 1000000 / framerate;
     }
 
-    public void startBackgroundThread() {
-        if (backgroundHandlerThread != null) {
-            return;
-        }
-
-        backgroundHandlerThread = HandlerThreadFactory.create("BitmapToVideoEncoderBackground");
-        try {
-            backgroundHandlerThread.start();
-        } catch (IllegalThreadStateException e) {
-            // Ignore exception in case the thread has already started.
-        }
-        backgroundHandler = HandlerFactory.create(backgroundHandlerThread.getLooper());
-    }
-
-    /** Stops the background thread and its {@link Handler}. */
-    public void stopBackgroundThread() {
-        if (backgroundHandlerThread != null) {
-            backgroundHandlerThread.quitSafely();
-        }
-        backgroundHandlerThread = null;
-        backgroundHandler = null;
-    }
-
-    static class HandlerThreadFactory {
-        /**
-         * Creates a new instance of the {@link HandlerThread} class.
-         *
-         * <p>This method is visible for testing purposes only and should never be used outside this *
-         * class.
-         *
-         * @param name to give to the HandlerThread.
-         * @return new instance of the {@link HandlerThread} class.
-         */
-        @VisibleForTesting
-        public static HandlerThread create(String name) {
-            return new HandlerThread(name);
-        }
-    }
-
-    /** Factory class that assists in creating a {@link Handler} instance. */
-    static class HandlerFactory {
-        /**
-         * Creates a new instance of the {@link Handler} class.
-         *
-         * <p>This method is visible for testing purposes only and should never be used outside this *
-         * class.
-         *
-         * @param looper to give to the Handler.
-         * @return new instance of the {@link Handler} class.
-         */
-        @VisibleForTesting
-        public static Handler create(Looper looper) {
-            return new Handler(looper);
-        }
-    }
 }

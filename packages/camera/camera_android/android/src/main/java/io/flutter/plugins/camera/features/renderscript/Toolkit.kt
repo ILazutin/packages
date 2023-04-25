@@ -1087,6 +1087,17 @@ object Toolkit {
         return outputBitmap
     }
 
+    fun rgbToYuv(inputArray: IntArray, sizeX: Int, sizeY: Int, format: YuvFormat): ByteArray {
+        require(sizeX % 2 == 0 && sizeY % 2 == 0) {
+            "$externalName rgbToYuv. Non-even dimensions are not supported. " +
+                    "$sizeX and $sizeY were provided."
+        }
+
+        val outputArray = ByteArray(sizeX * sizeY * 3 / 2)
+        nativeRgbToYuv(nativeHandle, inputArray, outputArray, sizeX, sizeY, format.value)
+        return outputArray
+    }
+
     private var nativeHandle: Long = 0
 
     init {
@@ -1308,6 +1319,15 @@ object Toolkit {
         sizeY: Int,
         outputBitmap: Bitmap,
         value: Int
+    )
+
+    private external fun nativeRgbToYuv(
+        nativeHandle: Long,
+        inputArray: IntArray,
+        outputArray: ByteArray,
+        sizeX: Int,
+        sizeY: Int,
+        format: Int
     )
 }
 
