@@ -43,37 +43,4 @@ bool cpuSupportsSimd() {
     return false;
 }
 
-#ifdef ANDROID_RENDERSCRIPT_TOOLKIT_VALIDATE
-bool validRestriction(const char* tag, size_t sizeX, size_t sizeY, const Restriction* restriction) {
-    if (restriction == nullptr) {
-        return true;
-    }
-    if (restriction->startX >= sizeX || restriction->endX > sizeX) {
-        ALOGE("%s. sizeX should be greater than restriction->startX and greater or equal to "
-              "restriction->endX. %zu, %zu, and %zu were provided respectively.",
-              tag, sizeX, restriction->startX, restriction->endY);
-        return false;
-    }
-    if (restriction->startY >= sizeY && restriction->endY > sizeY) {
-        ALOGE("%s. sizeY should be greater than restriction->startY and greater or equal to "
-              "restriction->endY. %zu, %zu, and %zu were provided respectively.",
-              tag, sizeY, restriction->startY, restriction->endY);
-        return false;
-    }
-    if (restriction->startX >= restriction->endX) {
-        ALOGE("%s. Restriction startX should be less than endX. "
-              "%zu and %zu were provided respectively.",
-              tag, restriction->startX, restriction->endX);
-        return false;
-    }
-    if (restriction->startY >= restriction->endY) {
-        ALOGE("%s. Restriction startY should be less than endY. "
-              "%zu and %zu were provided respectively.",
-              tag, restriction->startY, restriction->endY);
-        return false;
-    }
-    return true;
-}
-#endif
-
 }  // namespace renderscript

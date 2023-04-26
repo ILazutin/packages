@@ -25,11 +25,9 @@ inline size_t roundUpTo16(size_t val) {
 }
 
 class RgbToYuvTask : public Task {
-    uint8_t* mOut;
-    size_t mCstep;
+    [[maybe_unused]] uint8_t* mOut;
     size_t mSize;
     size_t mSizeX;
-    size_t mSizeY;
     RenderScriptToolkit::YuvFormat mFormat;
     const uint32_t* mInput;
 
@@ -42,10 +40,8 @@ class RgbToYuvTask : public Task {
     RgbToYuvTask(const uint32_t* input, uint8_t* output, size_t sizeX, size_t sizeY,
                  RenderScriptToolkit::YuvFormat format)
         : Task{sizeX, sizeY, 4, false, nullptr}, mOut{output} {
-        mCstep = 1;
         mSize = sizeX * sizeY;
         mSizeX = sizeX;
-        mSizeY = sizeY;
         mInput = input;
         mFormat = format;
     }

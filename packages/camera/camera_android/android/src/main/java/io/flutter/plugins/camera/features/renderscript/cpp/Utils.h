@@ -130,12 +130,6 @@ inline float clamp(float amount, float low, float high) {
     return amount < low ? low : (amount > high ? high : amount);
 }
 
-#ifdef ANDROID_RENDERSCRIPT_TOOLKIT_VALIDATE
-struct Restriction;
-
-bool validRestriction(const char* tag, size_t sizeX, size_t sizeY, const Restriction* restriction);
-#endif
-
 /**
  * Returns true if the processor we're running on supports the SIMD instructions that are
  * used in our assembly code.
