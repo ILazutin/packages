@@ -23,10 +23,6 @@ cmake_minimum_required(VERSION 3.10.2)
 
 project("RenderScript Toolkit")
 
-set(can_use_assembler TRUE)
-enable_language(ASM)
-add_definitions(-v -DANDROID -DOC_ARM_ASM)
-
 set(CMAKE_CXX_FLAGS "-Wall -Wextra ${CMAKE_CXX_FLAGS}")
 
 #message( STATUS "Architecture: ${CMAKE_SYSTEM_PROCESSOR}" )
@@ -36,20 +32,6 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra ${CMAKE_CXX_FLAGS}")
 #set(CMAKE_VERBOSE_MAKEFILE on)
 #set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fno-limit-debug-info -g")
 #set(CMAKE_CXX_FLAGS_RELEASE "-O2 -Os -DNDEBUG")
-
-#TODO check that the definitions are all needed. Do they have impact outside of our code?
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL armv7-a)
-    add_definitions(-DARCH_ARM_USE_INTRINSICS -DARCH_ARM_HAVE_VFP)
-    set(ASM_SOURCES
-        YuvToRgb_neon.S)
-endif()
-
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
-    add_definitions(-DARCH_ARM_USE_INTRINSICS -DARCH_ARM64_USE_INTRINSICS -DARCH_ARM64_HAVE_NEON)
-    set(ASM_SOURCES
-        YuvToRgb_advsimd.S)
-endif()
-# TODO add also for x86
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
@@ -87,12 +69,9 @@ find_library(# Sets the name of the path variable.
 
 target_link_libraries(# Specifies the target library.
                       renderscript-toolkit
-
-                      cpufeatures
                       jnigraphics
                       # Links the target library to the log library
                       # included in the NDK.
                       ${log-lib} )
 
 include(AndroidNdkModules)
-android_ndk_import_module_cpufeatures()
