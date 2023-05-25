@@ -324,7 +324,7 @@ class Camera
         frameRate = profile.videoFrameRate;
       }
 
-      livePhotoQueue = new CircularFifoQueue<Bitmap>(livePhotoMaxDuration / 1000 * frameRate);
+      livePhotoQueue = new CircularFifoQueue<Bitmap>((int) ((float) livePhotoMaxDuration / 1000 * frameRate));
       livePhotoImageStreamReader.setOnImageAvailableListener(reader -> {
 
         if (needMakeCapture) {
@@ -718,6 +718,7 @@ class Camera
         CamcorderProfile profile = getRecordingProfileLegacy();
         frameRate = profile.videoFrameRate;
       }
+      Log.d("LivePhotoFrameRate", String.valueOf(frameRate));
 
       long livePhotoDelayed = 0;
       if (livePhotoQueue.size() < livePhotoQueue.maxSize() / 2) {
