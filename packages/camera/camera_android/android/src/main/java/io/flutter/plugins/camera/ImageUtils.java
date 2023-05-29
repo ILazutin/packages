@@ -53,6 +53,8 @@ public class ImageUtils {
     }
 
     public static byte[] YUV420toNV21(Image image) {
+        if (image == null) return null;
+
         Rect crop = image.getCropRect();
         int format = image.getFormat();
         int width = crop.width();

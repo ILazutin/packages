@@ -50,11 +50,14 @@ public class ImageSaver implements Runnable {
 
     if (image != null) {
       if (image.getFormat() == ImageFormat.YUV_420_888) {
-        bitmap = ImageUtils.rotateBitmap(
-                ImageUtils.NV21toJPEG(ImageUtils.YUV420toNV21(image), image.getWidth(), image.getHeight(), 100),
-                orientation);
-        image.close();
-        image = null;
+        byte[] nv21 = ImageUtils.YUV420toNV21(image);
+        if (nv21 != null) {
+          bitmap = ImageUtils.rotateBitmap(
+                  ImageUtils.NV21toJPEG(nv21, image.getWidth(), image.getHeight(), 100),
+                  orientation);
+          image.close();
+          image = null;
+        }
         bytes = new byte[0];
       } else {
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
