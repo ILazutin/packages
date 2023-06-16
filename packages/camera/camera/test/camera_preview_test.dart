@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:camera/camera.dart';
+import 'package:camera_platform_interface/src/events/camera_event.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -130,6 +131,12 @@ class FakeController extends ValueNotifier<CameraValue>
 
   @override
   CameraDescription? get secondCameraDescription => null;
+
+  @override
+  Stream<CameraErrorEvent> onCameraError() {
+    // TODO: implement onCameraError
+    throw UnimplementedError();
+  }
 }
 
 void main() {

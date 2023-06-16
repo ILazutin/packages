@@ -358,6 +358,11 @@ class CameraController extends ValueNotifier<CameraValue> {
     _initCalled = true;
   }
 
+  /// The camera experienced an error.
+  Stream<CameraErrorEvent> onCameraError() {
+    return CameraPlatform.instance.onCameraError(_cameraId);
+  }
+
   /// Prepare the capture session for video recording.
   ///
   /// Use of this method is optional, but it may be called for performance
