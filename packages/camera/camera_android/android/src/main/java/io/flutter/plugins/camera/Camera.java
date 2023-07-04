@@ -292,7 +292,7 @@ class Camera
         ImageReader.newInstance(
             resolutionFeature.getCaptureSize().getWidth(),
             resolutionFeature.getCaptureSize().getHeight(),
-            enableLivePhoto ? ImageFormat.YUV_420_888 : ImageFormat.JPEG,
+            ImageFormat.JPEG,
             1);
 
     // For image streaming, use the provided image format or fall back to YUV420.
