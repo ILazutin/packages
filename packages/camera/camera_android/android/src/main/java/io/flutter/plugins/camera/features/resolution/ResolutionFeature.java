@@ -23,6 +23,7 @@ import androidx.annotation.VisibleForTesting;
 import io.flutter.plugins.camera.CameraProperties;
 import io.flutter.plugins.camera.features.CameraFeature;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -115,6 +116,12 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
 
       Log.d("CAMERA SIZES HIGH", Arrays.toString(highRes));
       Log.d("CAMERA SIZES ALL", Arrays.toString(outputSizes));
+
+      Arrays.sort(highRes, new SortBySize());
+      Arrays.sort(outputSizes, new SortBySize());
+
+      Log.d("CAMERA SIZES HIGH SORT", Arrays.toString(highRes));
+      Log.d("CAMERA SIZES ALL SORT", Arrays.toString(outputSizes));
 
       return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
     } catch (Exception exception) {
@@ -461,5 +468,12 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
     }
 
     return this.captureSize;
+  }
+}
+
+class SortBySize implements Comparator<Size> {
+  public int compare(Size a, Size b)
+  {
+    return (b.getWidth() * b.getHeight()) - (a.getWidth() * a.getHeight());
   }
 }
