@@ -123,6 +123,9 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       Log.d("CAMERA SIZES HIGH SORT", Arrays.toString(highRes));
       Log.d("CAMERA SIZES ALL SORT", Arrays.toString(outputSizes));
 
+      int[] formats = configs.getOutputFormats();
+      Log.d("CAMERA OUTPUT FORMATS", Arrays.toString(formats));
+
       return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
     } catch (Exception exception) {
       return this.captureSize;
