@@ -6,13 +6,13 @@
 
 #define LOG_TAG "renderscript.toolkit.YuvToRgb"
 
-static const uint32_t kRed8     = 0x000000ff;
-static const uint32_t kGreen8   = 0x0000ff00;
-static const uint32_t kBlue8    = 0x00ff0000;
+static const uint32_t kRed8     = 0xff0000;
+static const uint32_t kGreen8   = 0xff00;
+static const uint32_t kBlue8    = 0xff;
 
-#define R32(rgb)    static_cast<uint8_t>((((rgb) & kRed8)))
+#define R32(rgb)    static_cast<uint8_t>((((rgb) & kRed8) >> 16))
 #define G32(rgb)    static_cast<uint8_t>((((rgb) & kGreen8) >> 8))
-#define B32(rgb)    static_cast<uint8_t>(((rgb) & kBlue8) >> 16)
+#define B32(rgb)    static_cast<uint8_t>(((rgb) & kBlue8))
 
 #define RGB2Y(r, g, b) (uint8_t)(((66 * (r) + 129 * (g) +  25 * (b) + 128) >> 8) +  16)
 #define RGB2U(r, g, b) (uint8_t)(((-38 * (r) - 74 * (g) + 112 * (b) + 128) >> 8) + 128)
