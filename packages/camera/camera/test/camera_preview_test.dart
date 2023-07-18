@@ -137,6 +137,12 @@ class FakeController extends ValueNotifier<CameraValue>
     // TODO: implement onCameraError
     throw UnimplementedError();
   }
+  
+  @override
+  Stream<LivePhotoFramesReadyEvent> onLivePhotoFrames() {
+    // TODO: implement onLivePhotoFrames
+    throw UnimplementedError();
+  }
 }
 
 void main() {

@@ -363,6 +363,10 @@ class CameraController extends ValueNotifier<CameraValue> {
     return CameraPlatform.instance.onCameraError(_cameraId);
   }
 
+  Stream<LivePhotoFramesReadyEvent> onLivePhotoFrames() {
+    return CameraPlatform.instance.onLivePhotoFrames(_cameraId);
+  }
+
   /// Prepare the capture session for video recording.
   ///
   /// Use of this method is optional, but it may be called for performance

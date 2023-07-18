@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 
 import java.io.File;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Queue;
 
 public class LivePhotoSaver implements Runnable {
@@ -32,8 +33,10 @@ public class LivePhotoSaver implements Runnable {
     @Override
     public void run() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Log.d("LivePhoto.START", LocalDateTime.now().toString());
-        }
+            LocalDateTime start = LocalDateTime.of(2023, 1, 1, 1, 1);
+            start = LocalDateTime.now();
+            Log.d("LivePhoto.START", start.toString());
+//        }
         BitmapToVideoEncoder bitmapToVideoEncoder = new BitmapToVideoEncoder(frameRate, orientation, outputFile -> callback.onComplete(0));
 
         bitmapToVideoEncoder.startEncoding(width, height, file);
@@ -43,8 +46,10 @@ public class LivePhotoSaver implements Runnable {
             bitmapToVideoEncoder.queueFrame(bitmap);
         }
         bitmapToVideoEncoder.stopEncoding();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Log.d("LivePhoto.STOP", LocalDateTime.now().toString());
+            long diff = ChronoUnit.SECONDS.between(LocalDateTime.now(), start);
+            Log.d("LivePhoto.DURATION", String.format("%d seconds", diff));
         }
     }
 

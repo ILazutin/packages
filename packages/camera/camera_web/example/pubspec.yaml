@@ -15,7 +15,7 @@ dev_dependencies:
     git:
       url: https://github.com/ILazutin/packages.git
       path: packages/camera/camera_platform_interface
-      ref: live_photo
+      ref: hide_video_perfomance
   camera_web:
     path: ../
   cross_file: ^0.3.1

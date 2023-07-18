@@ -22,7 +22,7 @@ dependencies:
     git:
       url: https://github.com/ILazutin/packages.git
       path: packages/camera/camera_platform_interface
-      ref: live_photo
+      ref: hide_video_perfomance
   flutter:
     sdk: flutter
   stream_transform: ^2.0.0

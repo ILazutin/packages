@@ -219,6 +219,11 @@ class AndroidCamera extends CameraPlatform {
   }
 
   @override
+  Stream<LivePhotoFramesReadyEvent> onLivePhotoFrames(int cameraId) {
+    return _cameraEvents(cameraId).whereType<LivePhotoFramesReadyEvent>();
+  }
+
+  @override
   Stream<VideoRecordedEvent> onVideoRecordedEvent(int cameraId) {
     return _cameraEvents(cameraId).whereType<VideoRecordedEvent>();
   }
@@ -653,6 +658,13 @@ class AndroidCamera extends CameraPlatform {
         cameraEventStreamController.add(CameraErrorEvent(
           cameraId,
           arguments['description']! as String,
+        ));
+        break;
+      case 'frames':
+        final Map<String, Object?> arguments = _getArgumentDictionary(call);
+        cameraEventStreamController.add(LivePhotoFramesReadyEvent(
+          cameraId,
+          arguments['frames']! as List<Uint8List>,
         ));
         break;
       default:

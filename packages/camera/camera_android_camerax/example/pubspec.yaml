@@ -18,7 +18,7 @@ dependencies:
     git:
       url: https://github.com/ILazutin/packages.git
       path: packages/camera/camera_platform_interface
-      ref: live_photo
+      ref: hide_video_perfomance
   flutter:
     sdk: flutter
   video_player: ^2.4.10
