@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show Uint8List, immutable;
 
 import '../../camera_platform_interface.dart';
 
@@ -283,4 +283,39 @@ class VideoRecordedEvent extends CameraEvent {
 
   @override
   int get hashCode => Object.hash(super.hashCode, file, maxVideoDuration);
+}
+
+/// An event fired when a video has finished recording.
+class LivePhotoFramesReadyEvent extends CameraEvent {
+  /// Build a VideoRecordedEvent triggered from the camera with the `cameraId`.
+  ///
+  /// The `file` represents the file of the video.
+  /// The `maxVideoDuration` shows if a maxVideoDuration shows if a maximum
+  /// video duration was set.
+  const LivePhotoFramesReadyEvent(super.cameraId, this.frames);
+
+  /// Converts the supplied [Map] to an instance of the [LivePhotoFramesReadyEvent]
+  /// class.
+  LivePhotoFramesReadyEvent.fromJson(Map<String, dynamic> json)
+      : frames = json['frames']! as List<Uint8List>,
+        super(json['cameraId']! as int);
+
+  /// XFile of the recorded video.
+  final List<Uint8List> frames;
+
+  /// Converts the [LivePhotoFramesReadyEvent] instance into a [Map] instance that can be
+  /// serialized to JSON.
+  Map<String, dynamic> toJson() => <String, Object?>{
+        'cameraId': cameraId,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      super == other &&
+          other is LivePhotoFramesReadyEvent &&
+          runtimeType == other.runtimeType;
+
+  @override
+  int get hashCode => Object.hash(super.hashCode, frames);
 }
