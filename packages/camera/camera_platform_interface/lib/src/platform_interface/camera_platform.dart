@@ -103,7 +103,7 @@ abstract class CameraPlatform extends PlatformInterface {
     throw UnimplementedError('onCameraTimeLimitReached() is not implemented.');
   }
 
-  Stream<LivePhotoFramesReadyEvent> onLivePhotoFrames() {
+  Stream<LivePhotoFramesReadyEvent> onLivePhotoFrames(int cameraId) {
     throw UnimplementedError('onLivePhotoFrames() is not implemented.');
   }
 
