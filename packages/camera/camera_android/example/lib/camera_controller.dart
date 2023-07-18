@@ -217,14 +217,14 @@ class CameraController extends ValueNotifier<CameraValue> {
     });
 
     _cameraId = await CameraPlatform.instance.createCamera(
-      description,
-      resolutionPreset,
-      ResolutionAspectRatio.RATIO_16_9,
-      enableAudio: enableAudio,
-      enableLivePhoto: true,
-      livePhotoMaxDuration: const Duration(seconds: 4),
-      secondCameraDescription: (await CameraPlatform.instance.isMultiCamSupported()) ? secondCameraDescription : null
-    );
+        description, resolutionPreset, ResolutionAspectRatio.RATIO_16_9,
+        enableAudio: enableAudio,
+        enableLivePhoto: true,
+        livePhotoMaxDuration: const Duration(seconds: 4),
+        secondCameraDescription:
+            (await CameraPlatform.instance.isMultiCamSupported())
+                ? secondCameraDescription
+                : null);
 
     CameraPlatform.instance
         .onCameraInitialized(_cameraId)
@@ -256,6 +256,14 @@ class CameraController extends ValueNotifier<CameraValue> {
     );
 
     _initCalled = true;
+
+    CameraPlatform.instance
+        .onLivePhotoFrames(_cameraId)
+        .first
+        .then((LivePhotoFramesReadyEvent event) {
+      print(
+          'LIVEPHOTO.FRAMES. Received ${event.frames.length} frames. Time: ${DateTime.now().toIso8601String()}');
+    });
   }
 
   /// Prepare the capture session for video recording.

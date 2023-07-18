@@ -662,10 +662,13 @@ class AndroidCamera extends CameraPlatform {
         break;
       case 'frames':
         final Map<String, Object?> arguments = _getArgumentDictionary(call);
-        cameraEventStreamController.add(LivePhotoFramesReadyEvent(
+        LivePhotoFramesReadyEvent event = LivePhotoFramesReadyEvent(
           cameraId,
-          arguments['frames']! as List<Uint8List>,
-        ));
+          (arguments['frames']! as List<Object?>).map((e) {
+            return (e as Uint8List);
+          }).toList(),
+        );
+        cameraEventStreamController.add(event);
         break;
       default:
         throw MissingPluginException();

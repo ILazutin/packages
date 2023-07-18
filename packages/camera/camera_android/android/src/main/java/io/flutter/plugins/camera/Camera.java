@@ -69,6 +69,7 @@ import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -724,6 +725,14 @@ class Camera
       if (livePhotoQueue.size() < livePhotoQueue.maxSize() / 2) {
         livePhotoDelayed = livePhotoMaxDuration / 2;
       }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Log.d("LivePhoto.FRAMES.START", LocalDateTime.now().toString());
+      }
+      List<Bitmap> frames = new ArrayList<Bitmap>();
+      for (int index = 0; index < livePhotoQueue.size(); index++) {
+        frames.add(livePhotoQueue.get(index));
+      }
+      dartMessenger.sendLivePhotoFramesEvent(frames);
       backgroundHandler.postDelayed(new LivePhotoSaver(
               livePhotoQueue,
               livePhotoOutputFile,

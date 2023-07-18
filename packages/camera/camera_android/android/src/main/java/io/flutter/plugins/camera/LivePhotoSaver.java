@@ -48,8 +48,8 @@ public class LivePhotoSaver implements Runnable {
         bitmapToVideoEncoder.stopEncoding();
 //        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Log.d("LivePhoto.STOP", LocalDateTime.now().toString());
-            long diff = ChronoUnit.SECONDS.between(LocalDateTime.now(), start);
-            Log.d("LivePhoto.DURATION", String.format("%d seconds", diff));
+            long diff = ChronoUnit.MILLIS.between(start, LocalDateTime.now());
+            Log.d("LivePhoto.DURATION", String.format("%f seconds for %d frames", diff / 1000.0, bitmaps.size()));
         }
     }
 

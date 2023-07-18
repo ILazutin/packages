@@ -4,6 +4,7 @@
 
 package io.flutter.plugins.camera;
 
+import android.graphics.Bitmap;
 import android.os.Handler;
 import android.text.TextUtils;
 import androidx.annotation.NonNull;
@@ -13,7 +14,10 @@ import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugins.camera.features.autofocus.FocusMode;
 import io.flutter.plugins.camera.features.exposurelock.ExposureMode;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Utility class that facilitates communication to the Flutter client */
@@ -39,6 +43,7 @@ public class DartMessenger {
     ERROR("error"),
     /** Indicates that the camera is closing. */
     CLOSING("camera_closing"),
+    FRAMES("frames"),
     /** Indicates that the camera is initialized. */
     INITIALIZED("initialized");
 
@@ -142,6 +147,21 @@ public class DartMessenger {
             if (!TextUtils.isEmpty(description)) put("description", description);
           }
         });
+  }
+
+  void sendLivePhotoFramesEvent(@Nullable List<Bitmap> frames) {
+    assert frames != null;
+    List<byte[]> framesBytes = new ArrayList<byte[]>();
+    for (Bitmap frame : frames) {
+      framesBytes.add(ImageUtils.bitmapToByteArray(frame));
+    }
+    this.send(
+            CameraEventType.FRAMES,
+            new HashMap<String, Object>() {
+              {
+                put("frames", framesBytes);
+              }
+            });
   }
 
   private void send(CameraEventType eventType) {

@@ -158,4 +158,10 @@ public class ImageUtils {
         }
         return outputBuffer;
     }
+
+    public static byte[] bitmapToByteArray(Bitmap bitmap) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output);
+        return output.toByteArray();
+    }
 }
