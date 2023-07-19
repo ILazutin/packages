@@ -220,11 +220,11 @@ class CameraController extends ValueNotifier<CameraValue> {
         description, resolutionPreset, ResolutionAspectRatio.RATIO_16_9,
         enableAudio: enableAudio,
         enableLivePhoto: true,
-        livePhotoMaxDuration: const Duration(seconds: 4),
-        secondCameraDescription:
-            (await CameraPlatform.instance.isMultiCamSupported())
-                ? secondCameraDescription
-                : null);
+        livePhotoMaxDuration: const Duration(milliseconds: 500),);
+        // secondCameraDescription:
+        //     (await CameraPlatform.instance.isMultiCamSupported())
+        //         ? secondCameraDescription
+        //         : null);
 
     CameraPlatform.instance
         .onCameraInitialized(_cameraId)
@@ -262,7 +262,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         .first
         .then((LivePhotoFramesReadyEvent event) {
       print(
-          'LIVEPHOTO.FRAMES. Received ${event.frames.length} frames. Time: ${DateTime.now().toIso8601String()}');
+          'LIVEPHOTO.FRAMES. Received ${event.frames.length} frames. Time: ${DateTime.now().toIso8601String()}. Frame size: ${(event.frames.first as Uint8List).lengthInBytes} bytes');
     });
   }
 
