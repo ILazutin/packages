@@ -18,6 +18,14 @@ static const uint32_t kBlue8    = 0xff;
 #define RGB2U(r, g, b) (uint8_t)(((-38 * (r) - 74 * (g) + 112 * (b) + 128) >> 8) + 128)
 #define RGB2V(r, g, b) (uint8_t)(((112 * (r) - 94 * (g) -  18 * (b) + 128) >> 8) + 128)
 
+static const uint32_t kRed8YV12     = 0x000000ff;
+static const uint32_t kGreen8YV12   = 0x0000ff00;
+static const uint32_t kBlue8YV12    = 0x00ff0000;
+
+#define R32YYV12(rgb)    static_cast<uint8_t>((((rgb) & kRed8YV12)))
+#define G32UYV12(rgb)    static_cast<uint8_t>((((rgb) & kGreen8YV12) >> 8))
+#define B32VYV12(rgb)    static_cast<uint8_t>(((rgb) & kBlue8YV12) >> 16)
+
 namespace renderscript {
 
 inline size_t roundUpTo16(size_t val) {
@@ -81,27 +89,47 @@ void RgbToYuvTask::kernel(size_t pixelIndex, uint32_t xstart, size_t uIndex, siz
 
     auto pixel = mInput[pixelIndex];
 
-    auto r = R32(pixel);
-    auto g = G32(pixel);
-    auto b = B32(pixel);
+    uint8_t r, g, b, y, u, v;
+
+    switch (mFormat) {
+        case RenderScriptToolkit::YuvFormat::NV21:
+            r = R32(pixel);
+            g = G32(pixel);
+            b = B32(pixel);
 
 //    if (pixelIndex < 50) {
 //        ALOGI("index: %d, rgbpixel %u, pinR %c, pinG %c, pinB %c, uvindex: %d", int(pixelIndex),
 //              pixel, r, g, b, int(uvIndex));
 //    }
 
-    auto y = RGB2Y((int)r, (int)g, (int)b);
-    auto u = RGB2U((int)r, (int)g, (int)b);
-    auto v = RGB2V((int)r, (int)g, (int)b);
+            y = RGB2Y((int)r, (int)g, (int)b);
+            u = RGB2U((int)r, (int)g, (int)b);
+            v = RGB2V((int)r, (int)g, (int)b);
 
 //    ALOGI("pinY %p, pinV %p, pinU %p", y, u, v);
 
-    mOut[pixelIndex] = y;
-    if (xstart % 2 == 0 && pixelIndex % 2 == 0) {
-        mOut[uIndex] = u;
-        mOut[vIndex] = v;
-    }
+            mOut[pixelIndex] = y;
+            if (xstart % 2 == 0 && pixelIndex % 2 == 0) {
+                mOut[uIndex] = u;
+                mOut[vIndex] = v;
+            }
+            break;
+        case RenderScriptToolkit::YuvFormat::YV12:
+            r = R32YYV12(pixel);
+            g = G32UYV12(pixel);
+            b = B32VYV12(pixel);
 
+            y = RGB2Y((int)r, (int)g, (int)b);
+            u = RGB2U((int)r, (int)g, (int)b);
+            v = RGB2V((int)r, (int)g, (int)b);
+
+            mOut[pixelIndex] = y;
+            if (xstart % 2 == 0 && pixelIndex % 2 == 0) {
+                mOut[uIndex] = u;
+                mOut[vIndex] = v;
+            }
+            break;
+    }
 }
 
 void RenderScriptToolkit::rgbToYuv(const uint32_t* input, uint8_t* output, size_t sizeX,
