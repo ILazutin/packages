@@ -6,8 +6,11 @@ package io.flutter.plugins.camera;
 
 import android.app.Activity;
 import android.hardware.camera2.CameraAccessException;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
@@ -26,6 +29,7 @@ import io.flutter.plugins.camera.features.resolution.ResolutionAspectRatio;
 import io.flutter.plugins.camera.features.resolution.ResolutionPreset;
 import io.flutter.view.TextureRegistry;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -136,6 +140,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             @Override
             public void onComplete(List<String> files) {
               mainCameraFiles.addAll(files);
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d("TAKEPICTURE.ONCOMPLETE", LocalDateTime.now().toString());
+              }
               if (secondCameraFiles.size() > 0) {
                 mainCameraFiles.addAll(secondCameraFiles);
                 camera.sendTakePictureResult(result, mainCameraFiles);

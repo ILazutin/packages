@@ -39,7 +39,7 @@ public class LivePhotoSaver implements Runnable {
 
     @Override
     public void run() {
-        callback.onComplete(0);
+//        callback.onComplete(0);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             LocalDateTime start = LocalDateTime.now();
             Log.d("LIVEPHOTO.FRAMES.THREAD", start.toString());
