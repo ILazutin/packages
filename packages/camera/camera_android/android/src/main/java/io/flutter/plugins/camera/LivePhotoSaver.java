@@ -39,6 +39,7 @@ public class LivePhotoSaver implements Runnable {
 
     @Override
     public void run() {
+        callback.onComplete(0);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             LocalDateTime start = LocalDateTime.now();
             Log.d("LIVEPHOTO.FRAMES.THREAD", start.toString());
@@ -48,8 +49,6 @@ public class LivePhotoSaver implements Runnable {
             frames.add(bitmaps.get(index));
         }
         dartMessenger.sendLivePhotoFramesEvent(frames);
-
-        callback.onComplete(0);
 
         boolean saveVideoFile = false;
         if (saveVideoFile) {
