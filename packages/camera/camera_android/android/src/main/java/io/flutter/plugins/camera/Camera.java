@@ -726,13 +726,13 @@ class Camera
         livePhotoDelayed = livePhotoMaxDuration / 2;
       }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        Log.d("LivePhoto.FRAMES.START", LocalDateTime.now().toString());
+        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
       }
-      List<Bitmap> frames = new ArrayList<Bitmap>();
-      for (int index = 0; index < livePhotoQueue.size(); index++) {
-        frames.add(livePhotoQueue.get(index));
-      }
-      dartMessenger.sendLivePhotoFramesEvent(frames);
+//      List<Bitmap> frames = new ArrayList<Bitmap>();
+//      for (int index = 0; index < livePhotoQueue.size(); index++) {
+//        frames.add(livePhotoQueue.get(index));
+//      }
+//      dartMessenger.sendLivePhotoFramesEvent(frames);
       backgroundHandler.postDelayed(new LivePhotoSaver(
               livePhotoQueue,
               livePhotoOutputFile,
@@ -740,6 +740,7 @@ class Camera
               videoCaptureSize.getWidth(),
               videoCaptureSize.getHeight(),
               frameRate,
+              dartMessenger,
               new LivePhotoSaver.Callback() {
         @Override
         public void onComplete(int status) {

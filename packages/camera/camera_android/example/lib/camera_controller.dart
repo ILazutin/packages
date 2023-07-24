@@ -262,7 +262,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         .first
         .then((LivePhotoFramesReadyEvent event) {
       print(
-          'LIVEPHOTO.FRAMES. Received ${event.frames.length} frames. Time: ${DateTime.now().toIso8601String()}. Frame size: ${(event.frames.first as Uint8List).lengthInBytes} bytes');
+          'LIVEPHOTO.FRAMES.EVENT. Received ${event.frames.length} frames. Time: ${DateTime.now().toIso8601String()}. Frame size: ${(event.frames.first as Uint8List).lengthInBytes} bytes');
     });
   }
 
