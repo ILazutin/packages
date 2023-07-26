@@ -15,6 +15,7 @@ import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
@@ -141,6 +142,7 @@ class Camera
   private Boolean captureFileSaveComplete = false;
   private Boolean livePhotoFileSaveComplete = false;
   private Surface previewSurface;
+  private SessionConfiguration sessionConfiguration;
   private ImageReader livePhotoImageStreamReader;
   private CircularFifoQueue<Bitmap> livePhotoQueue;
 
@@ -544,12 +546,12 @@ class Camera
   private void createCaptureSessionWithSessionConfig(
       List<OutputConfiguration> outputConfigs, CameraCaptureSession.StateCallback callback)
       throws CameraAccessException {
-    cameraDevice.createCaptureSession(
-        new SessionConfiguration(
+    sessionConfiguration = new SessionConfiguration(
             SessionConfiguration.SESSION_REGULAR,
             outputConfigs,
             Executors.newSingleThreadExecutor(),
-            callback));
+            callback);
+    cameraDevice.createCaptureSession(sessionConfiguration);
   }
 
   @TargetApi(VERSION_CODES.LOLLIPOP)
@@ -643,6 +645,38 @@ class Camera
     // Listen for picture being taken.
     pictureImageReader.setOnImageAvailableListener(this, backgroundHandler);
 
+//    if (enableLivePhoto) {
+//      previewRequestBuilder.removeTarget(livePhotoImageStreamReader.getSurface());
+//      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+//        List<OutputConfiguration> configs = sessionConfiguration.getOutputConfigurations();
+//        int index = -1;
+//        for (OutputConfiguration output : configs) {
+//          if (output.getSurface().equals(livePhotoImageStreamReader.getSurface())) {
+//            index = configs.indexOf(output);
+//            break;
+//          }
+//        }
+//        if (index > 0) {
+//          configs.remove(index);
+//        }
+//        try {
+//          captureSession.finalizeOutputConfigurations(configs);
+//        } catch (CameraAccessException e) {
+//          throw new RuntimeException(e);
+//        }
+////      }
+////      updateBuilderSettings(previewRequestBuilder);
+////      livePhotoImageStreamReader.setOnImageAvailableListener(null, backgroundHandler);
+////      try {
+////        captureSession.setRepeatingRequest(previewRequestBuilder.build(), null, backgroundHandler);
+////      } catch (CameraAccessException e) {
+////        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+////          Log.d("TAKEPICTURE.ERROR", LocalDateTime.now().toString());
+////        }
+////        return;
+//      }
+//    }
+
     final AutoFocusFeature autoFocusFeature = cameraFeatures.getAutoFocus();
     final boolean isAutoFocusSupported = autoFocusFeature.checkIsSupported();
     if (isAutoFocusSupported && autoFocusFeature.getValue() == FocusMode.auto) {
@@ -661,6 +695,9 @@ class Camera
    * response is received in {@link #cameraCaptureCallback} from lockFocus().
    */
   private void runPrecaptureSequence() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      Log.d("TAKEPICTURE.PRECAPTURE", LocalDateTime.now().toString());
+    }
     Log.i(TAG, "runPrecaptureSequence");
     try {
       // First set precapture state to idle or else it can hang in STATE_WAITING_PRECAPTURE_START.
@@ -853,6 +890,9 @@ class Camera
 
   /** Start capturing a picture, doing autofocus first. */
   private void runPictureAutoFocus() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      Log.d("TAKEPICTURE.STARTFOCUS", LocalDateTime.now().toString());
+    }
     Log.i(TAG, "runPictureAutoFocus");
 
     cameraCaptureCallback.setCameraState(CameraState.STATE_WAITING_FOCUS);
@@ -861,6 +901,9 @@ class Camera
 
   private void lockAutoFocus() {
     Log.i(TAG, "lockAutoFocus");
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      Log.d("TAKEPICTURE.LOCKFOCUS", LocalDateTime.now().toString());
+    }
     if (captureSession == null) {
       Log.i(TAG, "[unlockAutoFocus] captureSession null, returning");
       return;
@@ -1315,38 +1358,40 @@ class Camera
                     }
                     dartMessenger.finish(flutterResult, files);
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
-                    }
+                    if (enableLivePhoto) {
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
+                      }
 
-                    backgroundHandler.postDelayed(new LivePhotoSaver(
-                            livePhotoQueue,
-                            livePhotoOutputFile,
-                            getVideoOrientation(),
-                            1280,
-                            720,
-                            30,
+                      backgroundHandler.postDelayed(new LivePhotoSaver(
+                              livePhotoQueue,
+                              livePhotoOutputFile,
+                              getVideoOrientation(),
+                              1280,
+                              720,
+                              30,
 //              videoCaptureSize.getWidth(),
 //              videoCaptureSize.getHeight(),
 //              frameRate,
-                            dartMessenger,
-                            new LivePhotoSaver.Callback() {
-                              @Override
-                              public void onComplete(int status) {
-                                livePhotoFileSaveComplete(status);
-                              }
-
-                              @Override
-                              public void onError(String errorCode, String errorMessage) {
-                                List<String> files = new ArrayList<>();
-                                files.add(captureFile.getAbsolutePath());
-                                if (takePictureCallback != null) {
-                                  takePictureCallback.onComplete(files);
-                                } else {
-                                  dartMessenger.finish(flutterResult, files);
+                              dartMessenger,
+                              new LivePhotoSaver.Callback() {
+                                @Override
+                                public void onComplete(int status) {
+                                  livePhotoFileSaveComplete(status);
                                 }
-                              }
-                            }), 0);
+
+                                @Override
+                                public void onError(String errorCode, String errorMessage) {
+                                  List<String> files = new ArrayList<>();
+                                  files.add(captureFile.getAbsolutePath());
+                                  if (takePictureCallback != null) {
+                                    takePictureCallback.onComplete(files);
+                                  } else {
+                                    dartMessenger.finish(flutterResult, files);
+                                  }
+                                }
+                              }), 0);
+                    }
                   }
                 }
               }

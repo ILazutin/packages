@@ -22,6 +22,8 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import io.flutter.plugins.camera.CameraProperties;
 import io.flutter.plugins.camera.features.CameraFeature;
+
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -98,9 +100,9 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraProperties.getCameraName());
       StreamConfigurationMap configs = characteristics.get(
               CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-      Size[] outputSizes = new Size[0];
+      List<Size> outputSizes = new ArrayList<Size>();
       try {
-        outputSizes = configs.getOutputSizes(ImageFormat.JPEG);
+        outputSizes.addAll(Arrays.asList(configs.getOutputSizes(ImageFormat.JPEG)));
       } catch (Exception exception) {
         Log.e("CameraResolution", exception.toString());
       }
@@ -114,19 +116,24 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
         Log.e("CameraResolution", exception.toString());
       }
 
-      Log.d("CAMERA SIZES HIGH", Arrays.toString(highRes));
-      Log.d("CAMERA SIZES ALL", Arrays.toString(outputSizes));
+      outputSizes.addAll(Arrays.asList(highRes));
 
+      Log.d("CAMERA SIZES HIGH", Arrays.toString(highRes));
+      Log.d("CAMERA SIZES ALL", Arrays.toString(outputSizes.toArray()));
+
+      Size[] allSizes = outputSizes.toArray(new Size[0]);
       Arrays.sort(highRes, new SortBySize());
-      Arrays.sort(outputSizes, new SortBySize());
+      Arrays.sort(allSizes, new SortBySize());
 
       Log.d("CAMERA SIZES HIGH SORT", Arrays.toString(highRes));
-      Log.d("CAMERA SIZES ALL SORT", Arrays.toString(outputSizes));
+      Log.d("CAMERA SIZES ALL SORT", Arrays.toString(allSizes));
 
       int[] formats = configs.getOutputFormats();
       Log.d("CAMERA OUTPUT FORMATS", Arrays.toString(formats));
 
-      return getFirstEligibleSizeForAspectRatio(highRes, outputSizes);
+      Size size = getFirstEligibleSizeForAspectRatio(allSizes);
+      Log.d("CAMERA CAPTURE SIZE", size.toString());
+      return size;
     } catch (Exception exception) {
       return this.captureSize;
     }
@@ -443,7 +450,7 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
     previewSize = computeBestPreviewSize(cameraId, resolutionPreset, aspectRatio);
   }
 
-  private Size getFirstEligibleSizeForAspectRatio(Size[] highResSizes, Size[] standardSizes) {
+  private Size getFirstEligibleSizeForAspectRatio(Size[] allSizes) {
     double widthDivider;
     double heightDivider;
     if (aspectRatio == ResolutionAspectRatio.RATIO_16_9) {
@@ -454,17 +461,10 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
       heightDivider = 3f;
     }
 
-    if (highResSizes != null) {
-      for (Size currentSize : highResSizes) {
-        if ((currentSize.getWidth() / widthDivider) == (currentSize.getHeight() / heightDivider)) {
-          return currentSize;
-        }
-      }
-    }
-
-    if (standardSizes != null) {
-      for (Size currentSize : standardSizes) {
-        if ((currentSize.getWidth() / widthDivider) == (currentSize.getHeight() / heightDivider)) {
+    if (allSizes != null) {
+      for (Size currentSize : allSizes) {
+        if ((currentSize.getWidth() / widthDivider) == (currentSize.getHeight() / heightDivider)
+                && currentSize.getWidth() >= this.captureSize.getWidth()) {
           return currentSize;
         }
       }
@@ -477,6 +477,7 @@ public class ResolutionFeature extends CameraFeature<ResolutionPreset> {
 class SortBySize implements Comparator<Size> {
   public int compare(Size a, Size b)
   {
-    return (b.getWidth() * b.getHeight()) - (a.getWidth() * a.getHeight());
+//    return (b.getWidth() * b.getHeight()) - (a.getWidth() * a.getHeight()); //DESC
+    return (a.getWidth() * a.getHeight()) - (b.getWidth() * b.getHeight()); //ASC
   }
 }
