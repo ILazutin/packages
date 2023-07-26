@@ -764,7 +764,7 @@ class Camera
 //      }
 //      Log.d("LivePhotoFrameRate", String.valueOf(frameRate));
 //
-//      long livePhotoDelayed = 500;
+      long livePhotoDelayed = 0;
 //      if (livePhotoQueue.size() < livePhotoQueue.maxSize() / 2) {
 //        livePhotoDelayed = livePhotoMaxDuration / 2;
 //      }
@@ -777,34 +777,34 @@ class Camera
 //      }
 //      dartMessenger.sendLivePhotoFramesEvent(frames);
       livePhotoFileSaveComplete(0);
-//      backgroundHandler.postDelayed(new LivePhotoSaver(
-//              livePhotoQueue,
-//              livePhotoOutputFile,
-//              getVideoOrientation(),
-//1280,
-//720,
-//30,
-////              videoCaptureSize.getWidth(),
-////              videoCaptureSize.getHeight(),
-////              frameRate,
-//              dartMessenger,
-//              new LivePhotoSaver.Callback() {
-//        @Override
-//        public void onComplete(int status) {
-//          livePhotoFileSaveComplete(status);
-//        }
-//
-//        @Override
-//        public void onError(String errorCode, String errorMessage) {
-//          List<String> files = new ArrayList<>();
-//          files.add(captureFile.getAbsolutePath());
-//          if (takePictureCallback != null) {
-//            takePictureCallback.onComplete(files);
-//          } else {
-//            dartMessenger.finish(flutterResult, files);
-//          }
-//        }
-//      }), livePhotoDelayed);
+      backgroundHandler.postDelayed(new LivePhotoSaver(
+              livePhotoQueue,
+              livePhotoOutputFile,
+              getVideoOrientation(),
+1280,
+720,
+30,
+//              videoCaptureSize.getWidth(),
+//              videoCaptureSize.getHeight(),
+//              frameRate,
+              dartMessenger,
+              new LivePhotoSaver.Callback() {
+        @Override
+        public void onComplete(int status) {
+          livePhotoFileSaveComplete(status);
+        }
+
+        @Override
+        public void onError(String errorCode, String errorMessage) {
+          List<String> files = new ArrayList<>();
+          files.add(captureFile.getAbsolutePath());
+          if (takePictureCallback != null) {
+            takePictureCallback.onComplete(files);
+          } else {
+            dartMessenger.finish(flutterResult, files);
+          }
+        }
+      }), livePhotoDelayed);
     }
 
     // This is the CaptureRequest.Builder that is used to take a picture.
@@ -1358,40 +1358,40 @@ class Camera
                     }
                     dartMessenger.finish(flutterResult, files);
 
-                    if (enableLivePhoto) {
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
-                      }
-
-                      backgroundHandler.postDelayed(new LivePhotoSaver(
-                              livePhotoQueue,
-                              livePhotoOutputFile,
-                              getVideoOrientation(),
-                              1280,
-                              720,
-                              30,
-//              videoCaptureSize.getWidth(),
-//              videoCaptureSize.getHeight(),
-//              frameRate,
-                              dartMessenger,
-                              new LivePhotoSaver.Callback() {
-                                @Override
-                                public void onComplete(int status) {
-                                  livePhotoFileSaveComplete(status);
-                                }
-
-                                @Override
-                                public void onError(String errorCode, String errorMessage) {
-                                  List<String> files = new ArrayList<>();
-                                  files.add(captureFile.getAbsolutePath());
-                                  if (takePictureCallback != null) {
-                                    takePictureCallback.onComplete(files);
-                                  } else {
-                                    dartMessenger.finish(flutterResult, files);
-                                  }
-                                }
-                              }), 0);
-                    }
+//                    if (enableLivePhoto) {
+//                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//                        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
+//                      }
+//
+//                      backgroundHandler.postDelayed(new LivePhotoSaver(
+//                              livePhotoQueue,
+//                              livePhotoOutputFile,
+//                              getVideoOrientation(),
+//                              1280,
+//                              720,
+//                              30,
+////              videoCaptureSize.getWidth(),
+////              videoCaptureSize.getHeight(),
+////              frameRate,
+//                              dartMessenger,
+//                              new LivePhotoSaver.Callback() {
+//                                @Override
+//                                public void onComplete(int status) {
+//                                  livePhotoFileSaveComplete(status);
+//                                }
+//
+//                                @Override
+//                                public void onError(String errorCode, String errorMessage) {
+//                                  List<String> files = new ArrayList<>();
+//                                  files.add(captureFile.getAbsolutePath());
+//                                  if (takePictureCallback != null) {
+//                                    takePictureCallback.onComplete(files);
+//                                  } else {
+//                                    dartMessenger.finish(flutterResult, files);
+//                                  }
+//                                }
+//                              }), 0);
+//                    }
                   }
                 }
               }
