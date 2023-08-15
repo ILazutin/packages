@@ -662,11 +662,12 @@ class AndroidCamera extends CameraPlatform {
         break;
       case 'frames':
         final Map<String, Object?> arguments = _getArgumentDictionary(call);
-        LivePhotoFramesReadyEvent event = LivePhotoFramesReadyEvent(
+        final LivePhotoFramesReadyEvent event = LivePhotoFramesReadyEvent(
           cameraId,
           (arguments['frames']! as List<Object?>).map((e) {
-            return (e as Uint8List);
+            return (e ?? Uint8List(0)) as Uint8List;
           }).toList(),
+          (arguments['orientation'] ?? 0) as int,
         );
         cameraEventStreamController.add(event);
         break;
