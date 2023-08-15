@@ -149,7 +149,7 @@ public class DartMessenger {
         });
   }
 
-  void sendLivePhotoFramesEvent(@Nullable List<Bitmap> frames) {
+  void sendLivePhotoFramesEvent(List<Bitmap> frames, int orientation) {
     assert frames != null;
     List<byte[]> framesBytes = new ArrayList<byte[]>();
     for (Bitmap frame : frames) {
@@ -160,6 +160,7 @@ public class DartMessenger {
             new HashMap<String, Object>() {
               {
                 put("frames", framesBytes);
+                put("orientation", orientation);
               }
             });
   }

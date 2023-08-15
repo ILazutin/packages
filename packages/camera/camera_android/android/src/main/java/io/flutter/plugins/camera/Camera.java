@@ -137,7 +137,6 @@ class Camera
   private boolean pausedPreview;
 
   private File captureFile;
-  private File livePhotoOutputFile;
   private Boolean needMakeCapture = false;
   private Boolean captureFileSaveComplete = false;
   private Boolean livePhotoFileSaveComplete = false;
@@ -533,7 +532,6 @@ class Camera
     if (status == 0 && captureFileSaveComplete) {
       List<String> files = new ArrayList<>();
       files.add(captureFile.getAbsolutePath());
-      files.add(livePhotoOutputFile.getAbsolutePath());
       if (takePictureCallback != null) {
         takePictureCallback.onComplete(files);
       } else {
@@ -630,9 +628,6 @@ class Camera
     try {
       captureFile = File.createTempFile("CAP", ".jpg", outputDir);
       captureTimeouts.reset();
-      if (enableLivePhoto) {
-        livePhotoOutputFile = File.createTempFile("CAP", ".mp4", outputDir);
-      }
     } catch (IOException | SecurityException e) {
       if (takePictureCallback != null) {
         takePictureCallback.onError("cannotCreateFile", e.getMessage(), null);
@@ -644,38 +639,6 @@ class Camera
 
     // Listen for picture being taken.
     pictureImageReader.setOnImageAvailableListener(this, backgroundHandler);
-
-//    if (enableLivePhoto) {
-//      previewRequestBuilder.removeTarget(livePhotoImageStreamReader.getSurface());
-//      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-//        List<OutputConfiguration> configs = sessionConfiguration.getOutputConfigurations();
-//        int index = -1;
-//        for (OutputConfiguration output : configs) {
-//          if (output.getSurface().equals(livePhotoImageStreamReader.getSurface())) {
-//            index = configs.indexOf(output);
-//            break;
-//          }
-//        }
-//        if (index > 0) {
-//          configs.remove(index);
-//        }
-//        try {
-//          captureSession.finalizeOutputConfigurations(configs);
-//        } catch (CameraAccessException e) {
-//          throw new RuntimeException(e);
-//        }
-////      }
-////      updateBuilderSettings(previewRequestBuilder);
-////      livePhotoImageStreamReader.setOnImageAvailableListener(null, backgroundHandler);
-////      try {
-////        captureSession.setRepeatingRequest(previewRequestBuilder.build(), null, backgroundHandler);
-////      } catch (CameraAccessException e) {
-////        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-////          Log.d("TAKEPICTURE.ERROR", LocalDateTime.now().toString());
-////        }
-////        return;
-//      }
-//    }
 
     final AutoFocusFeature autoFocusFeature = cameraFeatures.getAutoFocus();
     final boolean isAutoFocusSupported = autoFocusFeature.checkIsSupported();
@@ -750,43 +713,11 @@ class Camera
 
     if (enableLivePhoto) {
       needMakeCapture = true;
-
-//      ResolutionFeature resolutionFeature = cameraFeatures.getResolution();
-//      Size videoCaptureSize = resolutionFeature.getCaptureSizeForPreset(ResolutionPreset.high);
-//
-//      int frameRate;
-//      EncoderProfiles recordingProfile = getRecordingProfile();
-//      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
-//        frameRate = recordingProfile.getVideoProfiles().get(0).getFrameRate();
-//      } else {
-//        CamcorderProfile profile = getRecordingProfileLegacy();
-//        frameRate = profile.videoFrameRate;
-//      }
-//      Log.d("LivePhotoFrameRate", String.valueOf(frameRate));
-//
       long livePhotoDelayed = 0;
-//      if (livePhotoQueue.size() < livePhotoQueue.maxSize() / 2) {
-//        livePhotoDelayed = livePhotoMaxDuration / 2;
-//      }
-//      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-//        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
-//      }
-//      List<Bitmap> frames = new ArrayList<Bitmap>();
-//      for (int index = 0; index < livePhotoQueue.size(); index++) {
-//        frames.add(livePhotoQueue.get(index));
-//      }
-//      dartMessenger.sendLivePhotoFramesEvent(frames);
       livePhotoFileSaveComplete(0);
       backgroundHandler.postDelayed(new LivePhotoSaver(
               livePhotoQueue,
-              livePhotoOutputFile,
               getVideoOrientation(),
-1280,
-720,
-30,
-//              videoCaptureSize.getWidth(),
-//              videoCaptureSize.getHeight(),
-//              frameRate,
               dartMessenger,
               new LivePhotoSaver.Callback() {
         @Override
@@ -1346,9 +1277,6 @@ class Camera
                 if (!enableLivePhoto || livePhotoFileSaveComplete) {
                   List<String> files = new ArrayList<>();
                   files.add(absolutePath);
-                  if (enableLivePhoto && livePhotoFileSaveComplete) {
-                    files.add(livePhotoOutputFile.getAbsolutePath());
-                  }
 
                   if (takePictureCallback != null) {
                     takePictureCallback.onComplete(files);
@@ -1357,41 +1285,6 @@ class Camera
                       Log.d("TAKEPICTURE.ONCOMPLETE", LocalDateTime.now().toString());
                     }
                     dartMessenger.finish(flutterResult, files);
-
-//                    if (enableLivePhoto) {
-//                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-//                        Log.d("LIVEPHOTO.FRAMES.START", LocalDateTime.now().toString());
-//                      }
-//
-//                      backgroundHandler.postDelayed(new LivePhotoSaver(
-//                              livePhotoQueue,
-//                              livePhotoOutputFile,
-//                              getVideoOrientation(),
-//                              1280,
-//                              720,
-//                              30,
-////              videoCaptureSize.getWidth(),
-////              videoCaptureSize.getHeight(),
-////              frameRate,
-//                              dartMessenger,
-//                              new LivePhotoSaver.Callback() {
-//                                @Override
-//                                public void onComplete(int status) {
-//                                  livePhotoFileSaveComplete(status);
-//                                }
-//
-//                                @Override
-//                                public void onError(String errorCode, String errorMessage) {
-//                                  List<String> files = new ArrayList<>();
-//                                  files.add(captureFile.getAbsolutePath());
-//                                  if (takePictureCallback != null) {
-//                                    takePictureCallback.onComplete(files);
-//                                  } else {
-//                                    dartMessenger.finish(flutterResult, files);
-//                                  }
-//                                }
-//                              }), 0);
-//                    }
                   }
                 }
               }

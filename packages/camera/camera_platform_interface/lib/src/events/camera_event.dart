@@ -285,23 +285,30 @@ class VideoRecordedEvent extends CameraEvent {
   int get hashCode => Object.hash(super.hashCode, file, maxVideoDuration);
 }
 
-/// An event fired when a video has finished recording.
+/// An event fired when a live video frames has prepared.
 class LivePhotoFramesReadyEvent extends CameraEvent {
-  /// Build a VideoRecordedEvent triggered from the camera with the `cameraId`.
+  /// Build a LivePhotoFramesReadyEvent triggered from the camera with the `cameraId`.
   ///
-  /// The `file` represents the file of the video.
-  /// The `maxVideoDuration` shows if a maxVideoDuration shows if a maximum
-  /// video duration was set.
-  const LivePhotoFramesReadyEvent(super.cameraId, this.frames);
+  /// The `frames` represents the list of frame.
+  /// The `orientation` represents the orientation of frames.
+  const LivePhotoFramesReadyEvent(
+    super.cameraId,
+    this.frames,
+    this.orientation,
+  );
 
   /// Converts the supplied [Map] to an instance of the [LivePhotoFramesReadyEvent]
   /// class.
   LivePhotoFramesReadyEvent.fromJson(Map<String, dynamic> json)
       : frames = json['frames']! as List<Uint8List>,
+        orientation = json['orientation'] as int,
         super(json['cameraId']! as int);
 
-  /// XFile of the recorded video.
+  /// List of frames of the recorded live video.
   final List<Uint8List> frames;
+
+  /// Value of video frames orientation.
+  final int orientation;
 
   /// Converts the [LivePhotoFramesReadyEvent] instance into a [Map] instance that can be
   /// serialized to JSON.
@@ -314,8 +321,9 @@ class LivePhotoFramesReadyEvent extends CameraEvent {
       identical(this, other) ||
       super == other &&
           other is LivePhotoFramesReadyEvent &&
+          orientation == other.orientation &&
           runtimeType == other.runtimeType;
 
   @override
-  int get hashCode => Object.hash(super.hashCode, frames);
+  int get hashCode => Object.hash(super.hashCode, frames, orientation);
 }

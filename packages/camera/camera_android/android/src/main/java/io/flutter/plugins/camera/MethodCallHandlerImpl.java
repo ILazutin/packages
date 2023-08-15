@@ -116,9 +116,6 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           if (camera != null) {
             try {
               camera.open(call.argument("imageFormatGroup"));
-              if (secondCamera != null) {
-                secondCamera.open(null);
-              }
               result.success(null);
             } catch (Exception e) {
               handleException(e, result);
@@ -147,6 +144,39 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
                 mainCameraFiles.addAll(secondCameraFiles);
                 camera.sendTakePictureResult(result, mainCameraFiles);
               }
+
+              if (secondCamera != null) {
+                camera.close();
+                try {
+                  secondCamera.open(null);
+                } catch (CameraAccessException e) {
+                  throw new RuntimeException(e);
+                }
+                secondCamera.takePicture(result, new Camera.TakePictureCallback() {
+                  @Override
+                  public void onComplete(List<String> files) {
+                    secondCameraFiles.addAll(files);
+                    if (mainCameraFiles.size() > 0) {
+                      mainCameraFiles.addAll(secondCameraFiles);
+                      camera.sendTakePictureResult(result, mainCameraFiles);
+                    }
+                  }
+
+                  @Override
+                  public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
+                    if (mainCameraFiles.size() > 0) {
+                      camera.sendTakePictureResult(result, mainCameraFiles);
+                    }
+                  }
+
+                  @Override
+                  public void onCameraErrorEvent(@Nullable String description) {
+                    if (mainCameraFiles.size() > 0) {
+                      camera.sendTakePictureResult(result, mainCameraFiles);
+                    }
+                  }
+                });
+              }
             }
 
             @Override
@@ -159,32 +189,34 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
               camera.sendCameraErrorEvent(description);
             }
           });
-          if (secondCamera != null) {
-            secondCamera.takePicture(result, new Camera.TakePictureCallback() {
-              @Override
-              public void onComplete(List<String> files) {
-                secondCameraFiles.addAll(files);
-                if (mainCameraFiles.size() > 0) {
-                  mainCameraFiles.addAll(secondCameraFiles);
-                  camera.sendTakePictureResult(result, mainCameraFiles);
-                }
-              }
-
-              @Override
-              public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
-                if (mainCameraFiles.size() > 0) {
-                  camera.sendTakePictureResult(result, mainCameraFiles);
-                }
-              }
-
-              @Override
-              public void onCameraErrorEvent(@Nullable String description) {
-                if (mainCameraFiles.size() > 0) {
-                  camera.sendTakePictureResult(result, mainCameraFiles);
-                }
-              }
-            });
-          }
+//          if (secondCamera != null) {
+//            camera.close();
+//            secondCamera.open(null);
+//            secondCamera.takePicture(result, new Camera.TakePictureCallback() {
+//              @Override
+//              public void onComplete(List<String> files) {
+//                secondCameraFiles.addAll(files);
+//                if (mainCameraFiles.size() > 0) {
+//                  mainCameraFiles.addAll(secondCameraFiles);
+//                  camera.sendTakePictureResult(result, mainCameraFiles);
+//                }
+//              }
+//
+//              @Override
+//              public void onError(String errorCode, String errorMessage, @Nullable Object errorDetails) {
+//                if (mainCameraFiles.size() > 0) {
+//                  camera.sendTakePictureResult(result, mainCameraFiles);
+//                }
+//              }
+//
+//              @Override
+//              public void onCameraErrorEvent(@Nullable String description) {
+//                if (mainCameraFiles.size() > 0) {
+//                  camera.sendTakePictureResult(result, mainCameraFiles);
+//                }
+//              }
+//            });
+//          }
           break;
         }
       case "prepareForVideoRecording":
@@ -398,9 +430,6 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
 
           try {
             camera.lockCaptureOrientation(orientation);
-            if (secondCamera != null) {
-              secondCamera.lockCaptureOrientation(orientation);
-            }
             result.success(null);
           } catch (Exception e) {
             handleException(e, result);
@@ -411,9 +440,6 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         {
           try {
             camera.unlockCaptureOrientation();
-            if (secondCamera != null) {
-              secondCamera.unlockCaptureOrientation();
-            }
             result.success(null);
           } catch (Exception e) {
             handleException(e, result);
