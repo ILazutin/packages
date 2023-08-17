@@ -6,38 +6,33 @@ package io.flutter.plugins.camera;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.VisibleForTesting;
 import androidx.core.app.ActivityCompat;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 import io.flutter.plugin.common.MethodChannel;
 
+import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 
 /** Provides various utilities for camera. */
 public final class CameraUtils {
-
-  private static Handler[] backgroundHandlers = new Handler[2];
-  /** An additional thread for running tasks that shouldn't block the UI. */
-  private static HandlerThread[] backgroundHandlerThreads = new HandlerThread[2];
-  private static final CameraDevice[] initializedCameras = new CameraDevice[2];
 
   private CameraUtils() {
   }
@@ -74,7 +69,7 @@ public final class CameraUtils {
         return "landscapeRight";
       default:
         throw new UnsupportedOperationException(
-                "Could not serialize device orientation: " + orientation.toString());
+                "Could not serialize device orientation: " + orientation);
     }
   }
 
@@ -152,8 +147,6 @@ public final class CameraUtils {
   }
 
   public static void isMultiCamSupported(Activity activity, @NonNull final MethodChannel.Result result) throws CameraAccessException {
-    final String TAG = "Camera";
-
     List<Map<String, Object>> cameras = getAvailableCameras(activity);
 
     if (cameras.size() <= 1) {
@@ -161,190 +154,196 @@ public final class CameraUtils {
       return;
     }
 
-    CameraManager cameraManager = getCameraManager(activity);
-
     if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
       result.success(false);
       return;
     }
 
-    String firstCameraName = "";
-    String secondCameraName = "";
-    for (Map<String, Object> camera : cameras) {
-      if (firstCameraName.isEmpty() && Objects.requireNonNull(camera.get("lensFacing")).toString().equals("back")) {
-        firstCameraName = Objects.requireNonNull(camera.get("name")).toString();
+    boolean isMultiCamSupported = (
+            measureDevicePerformanceClass(activity) == PERFORMANCE_CLASS_HIGH &&
+                    cameras.size() > 1 &&
+                    allowPreparingHevcPlayers()
+    );
+
+    if (isMultiCamSupported) {
+      isMultiCamSupported = activity.getPackageManager().hasSystemFeature("android.hardware.camera.concurrent");
+
+      if (!isMultiCamSupported) {
+        int hash = (Build.MANUFACTURER + " " + Build.DEVICE).toUpperCase().hashCode();
+        for (int j : dualWhitelistByDevice) {
+          if (j == hash) {
+            isMultiCamSupported = true;
+            break;
+          }
+        }
+      }
+      if (!isMultiCamSupported) {
+        int hash = (Build.MANUFACTURER + Build.MODEL).toUpperCase().hashCode();
+        for (int j : dualWhitelistByModel) {
+          if (j == hash) {
+            isMultiCamSupported = true;
+            break;
+          }
+        }
+      }
+    }
+
+    result.success(isMultiCamSupported);
+  }
+
+  public static boolean allowPreparingHevcPlayers() {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+      return false;
+    }
+
+    MediaCodecList mediaCodecList = new MediaCodecList(MediaCodecList.ALL_CODECS);
+    MediaCodecInfo[] codecInfos = mediaCodecList.getCodecInfos();
+    int maxInstances = 0;
+    int capabilities = 0;
+
+    for (MediaCodecInfo codecInfo : codecInfos) {
+      if (codecInfo.isEncoder()) {
+        continue;
       }
 
-      if (secondCameraName.isEmpty() && Objects.requireNonNull(camera.get("lensFacing")).toString().equals("front")) {
-        secondCameraName = Objects.requireNonNull(camera.get("name")).toString();
+      boolean found = false;
+      for (int k = 0; k < codecInfo.getSupportedTypes().length; k++) {
+        if (codecInfo.getSupportedTypes()[k].contains("video/hevc")) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        continue;
+      }
+      capabilities = codecInfo.getCapabilitiesForType("video/hevc").getMaxSupportedInstances();
+      if (capabilities > maxInstances) {
+        maxInstances = capabilities;
       }
     }
 
-    if (firstCameraName.isEmpty() || secondCameraName.isEmpty()) {
-      result.success(false);
-      return;
+    return maxInstances >= 8;
+  }
+
+  private static final int[] dualWhitelistByDevice = new int[] {
+          1893745684,  // XIAOMI CUPID
+          -215458996,  // XIAOMI VAYU
+          -862041025,  // XIAOMI WILLOW
+          -1258375037, // XIAOMI INGRES
+          -1320049076, // XIAOMI GINKGO
+          -215749424,  // XIAOMI LISA
+          1901578030,  // XIAOMI LEMON
+          -215451421,  // XIAOMI VIVA
+          1908491424,  // XIAOMI STONE
+          -1321491332, // XIAOMI RAPHAEL
+          -1155551678, // XIAOMI MARBLE
+          1908524435,  // XIAOMI SURYA
+          976847578,   // XIAOMI LAUREL_SPROUT
+          -1489198134, // XIAOMI ALIOTH
+          1910814392,  // XIAOMI VENUS
+          -1634623708, // XIAOMI CEPHEUS
+          -713271737,  // OPPO OP4F2F
+          -2010722764, // SAMSUNG A52SXQ (A52s 5G)
+          1407170066,  // SAMSUNG D2Q (Note10+)
+          -821405251,  // SAMSUNG BEYOND2
+          -1394190955, // SAMSUNG A71
+          -1394190055, // SAMSUNG B4Q
+          1407170066,  // HUAWEI HWNAM
+          1407159934,  // HUAWEI HWCOR
+          1407172057,  // HUAWEI HWPCT
+          1231389747,  // FAIRPHONE FP3
+          -2076538925, // MOTOROLA RSTAR
+          41497626,    // MOTOROLA RHODEC
+          846150482,   // MOTOROLA CHANNEL
+          -1198092731, // MOTOROLA CYPRUS64
+          -251277614,  // MOTOROLA HANOIP
+          -2078385967, // MOTOROLA PSTAR
+          -2073158771, // MOTOROLA VICKY
+          1273004781   // MOTOROLA BLACKJACK
+//        -1426053134  // REALME REE2ADL1
+  };
+
+  private static final int[] dualWhitelistByModel = new int[] {
+
+  };
+
+  private static final int[] LOW_SOC = {
+          -1775228513, // EXYNOS 850
+          802464304,  // EXYNOS 7872
+          802464333,  // EXYNOS 7880
+          802464302,  // EXYNOS 7870
+          2067362118, // MSM8953
+          2067362060, // MSM8937
+          2067362084, // MSM8940
+          2067362241, // MSM8992
+          2067362117, // MSM8952
+          2067361998, // MSM8917
+          -1853602818 // SDM439
+  };
+
+  public final static int PERFORMANCE_CLASS_LOW = 0;
+  public final static int PERFORMANCE_CLASS_AVERAGE = 1;
+  public final static int PERFORMANCE_CLASS_HIGH = 2;
+
+  public static int measureDevicePerformanceClass(Activity activity) {
+    int androidVersion = Build.VERSION.SDK_INT;
+    int cpuCount = Runtime.getRuntime().availableProcessors();
+    int memoryClass = ((ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryClass();
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Build.SOC_MODEL != null) {
+      int hash = Build.SOC_MODEL.toUpperCase().hashCode();
+      for (int j : LOW_SOC) {
+        if (j == hash) {
+          return PERFORMANCE_CLASS_LOW;
+        }
+      }
     }
 
-    startBackgroundThread(0);
-    startBackgroundThread(1);
+    int totalCpuFreq = 0;
+    int freqResolved = 0;
+    for (int i = 0; i < cpuCount; i++) {
+      try {
+        RandomAccessFile reader = new RandomAccessFile(String.format(Locale.ENGLISH, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", i), "r");
+        String line = reader.readLine();
+        if (line != null) {
+          totalCpuFreq += Integer.parseInt(line) / 1000;
+          freqResolved++;
+        }
+        reader.close();
+      } catch (Throwable ignore) {}
+    }
+    int maxCpuFreq = freqResolved == 0 ? -1 : (int) Math.ceil(totalCpuFreq / (float) freqResolved);
 
+    long ram = -1;
     try {
-      cameraManager.openCamera(firstCameraName,
-              new CameraDevice.StateCallback() {
-                @Override
-                public void onOpened(@NonNull CameraDevice device) {
-                  Log.i(TAG, "first | open | onOpened");
-                  initializedCameras[0] = device;
-                  if (initializedCameras[1] != null) {
-                    initializedCameras[0].close();
-                    initializedCameras[1].close();
-                    result.success(true);
-                  }
-                }
+      ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+      ((ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryInfo(memoryInfo);
+      ram = memoryInfo.totalMem;
+    } catch (Exception ignore) {}
 
-                @Override
-                public void onClosed(@NonNull CameraDevice camera) {
-                  Log.i(TAG, "first | open | onClosed");
-                  initializedCameras[0] = null;
-                  stopBackgroundThread(0);
-                }
-
-                @Override
-                public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                  Log.i(TAG, "first | open | onDisconnected");
-                  if (backgroundHandlers[0] != null && initializedCameras[0] != null) {
-                    initializedCameras[0].close();
-                    initializedCameras[0] = null;
-                  }
-                }
-
-                @Override
-                public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                  Log.i(TAG, "first | open | onError");
-                  cameraDevice.close();
-                  if (initializedCameras[1] != null) {
-                    try {
-                      initializedCameras[1].close();
-                      initializedCameras[1] = null;
-                    } catch (Exception ignored) {
-                    }
-                  }
-                  result.success(false);
-                }
-              }, backgroundHandlers[0]);
-    } catch (Exception e) {
-      stopBackgroundThread(0);
-      stopBackgroundThread(1);
-      result.success(false);
-      return;
+    int performanceClass;
+    if (
+            androidVersion < 21 ||
+                    cpuCount <= 2 ||
+                    memoryClass <= 100 ||
+                    cpuCount <= 4 && maxCpuFreq != -1 && maxCpuFreq <= 1250 ||
+                    cpuCount <= 4 && maxCpuFreq <= 1600 && memoryClass <= 128 && androidVersion <= 21 ||
+                    cpuCount <= 4 && maxCpuFreq <= 1300 && memoryClass <= 128 && androidVersion <= 24 ||
+                    ram != -1 && ram < 2L * 1024L * 1024L * 1024L
+    ) {
+      performanceClass = PERFORMANCE_CLASS_LOW;
+    } else if (
+            cpuCount < 8 ||
+                    memoryClass <= 160 ||
+                    maxCpuFreq != -1 && maxCpuFreq <= 2055 ||
+                    maxCpuFreq == -1 && cpuCount == 8 && androidVersion <= 23
+    ) {
+      performanceClass = PERFORMANCE_CLASS_AVERAGE;
+    } else {
+      performanceClass = PERFORMANCE_CLASS_HIGH;
     }
+    Log.d("MULTICAM.PERFORMANCE", "device performance info selected_class = " + performanceClass + " (cpu_count = " + cpuCount + ", freq = " + maxCpuFreq + ", memoryClass = " + memoryClass + ", android version " + androidVersion + ", manufacture " + Build.MANUFACTURER + ")");
 
-    try {
-      cameraManager.openCamera(secondCameraName,
-              new CameraDevice.StateCallback() {
-                @Override
-                public void onOpened(@NonNull CameraDevice device) {
-                  Log.i(TAG, "second | open | onOpened");
-                  initializedCameras[1] = device;
-                  if (initializedCameras[0] != null) {
-                    initializedCameras[0].close();
-                    initializedCameras[1].close();
-                    result.success(true);
-                  }
-                }
-
-                @Override
-                public void onClosed(@NonNull CameraDevice camera) {
-                  Log.i(TAG, "second | open | onClosed");
-                  initializedCameras[1] = null;
-                  stopBackgroundThread(1);
-                }
-
-                @Override
-                public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-                  Log.i(TAG, "second | open | onDisconnected");
-                  if (backgroundHandlers[1] != null && initializedCameras[1] != null) {
-                    initializedCameras[1].close();
-                    initializedCameras[1] = null;
-                  }
-                }
-
-                @Override
-                public void onError(@NonNull CameraDevice cameraDevice, int errorCode) {
-                  Log.i(TAG, "second | open | onError");
-                  cameraDevice.close();
-                  if (initializedCameras[0] != null) {
-                    try {
-                      initializedCameras[0].close();
-                      initializedCameras[0] = null;
-                    } catch (Exception ignored) {
-                    }
-                  }
-                  result.success(false);
-                }
-              }, backgroundHandlers[1]);
-    } catch (CameraAccessException e) {
-      result.success(false);
-      stopBackgroundThread(0);
-      stopBackgroundThread(1);
-    }
-
-  }
-
-  private static void startBackgroundThread(int index) {
-    if (backgroundHandlerThreads[index] != null) {
-      return;
-    }
-
-    backgroundHandlerThreads[index] = HandlerThreadFactory.create("CameraUtilsBackgroundFirst");
-    try {
-      backgroundHandlerThreads[index].start();
-    } catch (IllegalThreadStateException e) {
-      // Ignore exception in case the thread has already started.
-    }
-    backgroundHandlers[index] = HandlerFactory.create(backgroundHandlerThreads[index].getLooper());
-  }
-
-  /** Stops the background thread and its {@link Handler}. */
-  private static void stopBackgroundThread(int index) {
-    if (backgroundHandlerThreads[index] != null) {
-      backgroundHandlerThreads[index].quitSafely();
-    }
-    backgroundHandlerThreads[index] = null;
-    backgroundHandlers[index] = null;
-  }
-
-  /** Factory class that assists in creating a {@link HandlerThread} instance. */
-  static class HandlerThreadFactory {
-    /**
-     * Creates a new instance of the {@link HandlerThread} class.
-     *
-     * <p>This method is visible for testing purposes only and should never be used outside this *
-     * class.
-     *
-     * @param name to give to the HandlerThread.
-     * @return new instance of the {@link HandlerThread} class.
-     */
-    @VisibleForTesting
-    public static HandlerThread create(String name) {
-      return new HandlerThread(name);
-    }
-  }
-
-  /** Factory class that assists in creating a {@link Handler} instance. */
-  static class HandlerFactory {
-    /**
-     * Creates a new instance of the {@link Handler} class.
-     *
-     * <p>This method is visible for testing purposes only and should never be used outside this *
-     * class.
-     *
-     * @param looper to give to the Handler.
-     * @return new instance of the {@link Handler} class.
-     */
-    @VisibleForTesting
-    public static Handler create(Looper looper) {
-      return new Handler(looper);
-    }
+    return performanceClass;
   }
 }
