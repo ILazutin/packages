@@ -248,6 +248,7 @@ public final class CameraUtils {
           -821405251,  // SAMSUNG BEYOND2
           -1394190955, // SAMSUNG A71
           -1394190055, // SAMSUNG B4Q
+          -1394168012, // SAMSUNG Y2S
           1407170066,  // HUAWEI HWNAM
           1407159934,  // HUAWEI HWCOR
           1407172057,  // HUAWEI HWPCT
