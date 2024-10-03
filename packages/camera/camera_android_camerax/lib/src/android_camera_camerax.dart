@@ -534,7 +534,7 @@ class AndroidCameraCameraX extends CameraPlatform {
     // Update UseCases to use target device orientation.
     await imageCapture!.setTargetRotation(targetLockedRotation);
     await imageAnalysis!.setTargetRotation(targetLockedRotation);
-    await videoCapture!.setTargetRotation(targetLockedRotation);
+    await videoCapture!.setTargetRotation(Surface.rotation90);
   }
 
   /// Unlocks the capture orientation.
